@@ -83,8 +83,8 @@
   <div class="brand"><b>발주왕</b><span id="viewLabel">마감 재고 입력</span>
     <span class="link" id="loadOrder">오늘 발주 불러오기</span></div>
   <div class="ctrls">
-    <select id="store"></select>
-    <input class="dateinput" type="date" id="date">
+    <select id="store" style="display:none"></select>
+    <input class="dateinput" type="date" id="date" style="flex:1">
   </div>
   <input class="search" id="search" placeholder="🔍 품목 검색" autocomplete="off">
   <div class="chips" id="chips"></div>
@@ -110,7 +110,7 @@
 <script>
 const API="https://baljuking.onrender.com";
 const $=s=>document.querySelector(s);
-let items=[], filterStorage="전체", lastResults=[];
+let items=[], filterPart="전체", lastResults=[];
 
 function toast(t,err){const e=$("#toast");e.textContent=t;e.className="toast show"+(err?" err":"");
   clearTimeout(e._t);e._t=setTimeout(()=>e.className="toast",2400);}
@@ -130,10 +130,10 @@ async function init(){
 }
 
 function buildChips(){
-  const zs=["전체",...[...new Set(items.map(i=>i.storage||i.zone||"기타"))]];
-  $("#chips").innerHTML=zs.map(z=>`<div class="chip${z==="전체"?" on":""}" data-z="${z}">${z}</div>`).join("");
+  const ps=["전체",...[...new Set(items.map(i=>i.part||"기타"))]];
+  $("#chips").innerHTML=ps.map(p=>`<div class="chip${p==="전체"?" on":""}" data-p="${p}">${p}</div>`).join("");
   $("#chips").querySelectorAll(".chip").forEach(c=>c.onclick=()=>{
-    filterStorage=c.dataset.z;
+    filterPart=c.dataset.p;
     $("#chips").querySelectorAll(".chip").forEach(x=>x.classList.toggle("on",x===c));
     applyFilter();
   });
@@ -145,10 +145,11 @@ function renderItems(){
   $("#items").innerHTML=items.map(i=>{
     const d=draft[i.item_id]||{};
     const st=i.storage||i.zone||"기타";
-    return `<div class="card" data-id="${i.item_id}" data-name="${i.name}" data-z="${st}">
+    const pt=i.part||"기타";
+    return `<div class="card" data-id="${i.item_id}" data-name="${i.name}" data-p="${pt}">
       <div>
         <div class="name">${i.name}</div>
-        <div class="meta"><span class="tag">${st}</span>${i.location?`<span>위치 ${i.location}</span>`:""}<span>${i.stock_unit}</span></div>
+        <div class="meta"><span class="tag">${pt}</span>${st?`<span>${st}</span>`:""}${i.location?`<span>위치 ${i.location}</span>`:""}<span>${i.stock_unit}</span></div>
       </div>
       <div class="qtywrap">
         <input class="qty num" inputmode="decimal" placeholder="—" value="${d.qty??""}" aria-label="${i.name}">
@@ -173,9 +174,9 @@ function renderItems(){
 function applyFilter(){
   const kw=$("#search").value.trim().toLowerCase();
   document.querySelectorAll(".card").forEach(c=>{
-    const okZ=filterStorage==="전체"||c.dataset.z===filterStorage;
+    const okP=filterPart==="전체"||c.dataset.p===filterPart;
     const okK=!kw||c.dataset.name.toLowerCase().includes(kw);
-    c.style.display=(okZ&&okK)?"":"none";
+    c.style.display=(okP&&okK)?"":"none";
   });
 }
 $("#search").addEventListener("input",applyFilter);
