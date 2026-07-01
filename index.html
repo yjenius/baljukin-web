@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>발주왕 · 재고 입력</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12211c;        /* 딥 그린잉크 */
+    --paper:#f6f4ec;      /* 종이 */
+    --card:#ffffff;
+    --green:#1f7a4d;      /* 마켓 그린 */
+    --green-d:#155f3b;
+    --line:#dcd8cb;
+    --muted:#6b7169;
+    --warn:#c23b2b;       /* 결품/경고 */
+    --warn-bg:#fbe9e6;
+    --shadow:0 1px 0 rgba(0,0,0,.04),0 8px 24px -18px rgba(18,33,28,.45);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{
+    background:var(--paper);color:var(--ink);
+    font-family:"Noto Sans KR",system-ui,sans-serif;
+    padding-bottom:96px;
+  }
+  .num{font-family:"Archivo","Noto Sans KR",sans-serif;font-variant-numeric:tabular-nums}
+
+  header{
+    position:sticky;top:0;z-index:20;background:var(--ink);color:#eef2ec;
+    padding:14px 16px;box-shadow:var(--shadow);
+  }
+  .brand{display:flex;align-items:baseline;gap:8px}
+  .brand b{font-family:"Archivo",sans-serif;font-weight:800;font-size:20px;letter-spacing:-.5px}
+  .brand span{font-size:12px;color:#9fb3a6}
+  .ctrls{display:flex;gap:8px;margin-top:12px}
+  select,.dateinput{
+    flex:1;min-width:0;background:#1b2f28;color:#eef2ec;border:1px solid #2c463c;
+    border-radius:12px;padding:11px 12px;font-size:15px;font-family:inherit;
+  }
+
+  main{max-width:640px;margin:0 auto;padding:16px}
+  .zone{margin:18px 4px 8px;font-size:12px;font-weight:700;letter-spacing:1px;
+    text-transform:uppercase;color:var(--muted)}
+
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:14px;margin-bottom:10px;box-shadow:var(--shadow);
+    display:grid;grid-template-columns:1fr auto;gap:10px 12px;align-items:center;
+  }
+  .card.out{border-color:var(--warn);background:var(--warn-bg)}
+  .name{font-weight:700;font-size:17px}
+  .unit{font-size:12px;color:var(--muted);margin-top:2px}
+  .unit b{color:var(--green-d)}
+  .qty{
+    width:104px;text-align:right;border:1px solid var(--line);border-radius:12px;
+    padding:12px;font-size:22px;font-weight:700;background:#fbfaf5;
+  }
+  .qty:focus{outline:2px solid var(--green);border-color:var(--green)}
+  .out .qty{opacity:.45}
+  .stockout{grid-column:1 / -1;display:flex;align-items:center;gap:8px;
+    font-size:14px;color:var(--muted);padding-top:2px}
+  .stockout input{width:20px;height:20px;accent-color:var(--warn)}
+  .stockout label{cursor:pointer;user-select:none}
+
+  .bar{
+    position:fixed;left:0;right:0;bottom:0;z-index:30;
+    background:linear-gradient(180deg,rgba(246,244,236,0),var(--paper) 30%);
+    padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+  }
+  .bar .inner{max-width:640px;margin:0 auto}
+  .btn{
+    width:100%;border:none;border-radius:14px;padding:16px;
+    font-family:"Archivo",sans-serif;font-weight:700;font-size:17px;letter-spacing:.2px;
+    background:var(--green);color:#fff;cursor:pointer;box-shadow:var(--shadow);
+  }
+  .btn:disabled{background:#9fb0a6;cursor:not-allowed}
+  .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+
+  /* 결과 */
+  .slip{background:var(--card);border:1px solid var(--line);border-radius:16px;
+    box-shadow:var(--shadow);overflow:hidden;margin-bottom:10px}
+  .slip .top{display:flex;justify-content:space-between;align-items:center;
+    padding:14px;border-bottom:1px dashed var(--line)}
+  .slip .top .name{font-size:17px}
+  .badge{font-size:12px;font-weight:700;padding:4px 9px;border-radius:999px}
+  .badge.order{background:#e6f2ea;color:var(--green-d)}
+  .badge.none{background:#eee;color:var(--muted)}
+  .badge.manual{background:var(--warn-bg);color:var(--warn)}
+  .slip .row{display:flex;justify-content:space-between;padding:10px 14px;font-size:14px}
+  .slip .row .k{color:var(--muted)}
+  .big{font-family:"Archivo",sans-serif;font-weight:800;font-size:26px;color:var(--green-d)}
+  .big.zero{color:var(--muted)}
+
+  .msg{text-align:center;color:var(--muted);padding:40px 16px}
+  .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);
+    background:var(--ink);color:#fff;padding:12px 18px;border-radius:12px;
+    font-size:14px;opacity:0;transition:.25s;z-index:40;box-shadow:var(--shadow)}
+  .toast.show{opacity:1;bottom:110px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><b>발주왕</b><span id="viewLabel">마감 재고 입력</span></div>
+  <div class="ctrls">
+    <select id="store"></select>
+    <input class="dateinput" type="date" id="date">
+  </div>
+</header>
+
+<main id="inputView">
+  <div id="items" class="msg">불러오는 중…</div>
+</main>
+
+<main id="resultView" class="hidden">
+  <div id="results"></div>
+</main>
+
+<div class="bar">
+  <div class="inner">
+    <button class="btn" id="calcBtn" disabled>발주 계산하기</button>
+    <button class="btn ghost hidden" id="backBtn" style="margin-top:8px">재고 다시 입력</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = "https://baljuking.onrender.com";   // ← 백엔드 주소
+const $ = s => document.querySelector(s);
+let items = [];
+
+function toast(t){const el=$("#toast");el.textContent=t;el.classList.add("show");
+  clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("show"),2200);}
+
+function today(){const d=new Date();return d.toISOString().slice(0,10);}
+
+async function init(){
+  $("#date").value = today();
+  try{
+    const [stores, its] = await Promise.all([
+      fetch(API+"/stores").then(r=>r.json()),
+      fetch(API+"/items").then(r=>r.json()),
+    ]);
+    $("#store").innerHTML = stores.map(s=>`<option value="${s.store_id}">${s.name}</option>`).join("");
+    items = its;
+    renderItems();
+  }catch(e){
+    $("#items").innerHTML = "서버에 연결하지 못했어요. 잠시 후 다시 시도하세요.<br>(무료 서버는 첫 접속 시 최대 1분 걸립니다)";
+  }
+}
+
+function renderItems(){
+  const zones = [...new Set(items.map(i=>i.zone))];
+  $("#items").className = "";
+  $("#items").innerHTML = zones.map(z=>{
+    const rows = items.filter(i=>i.zone===z).map(i=>`
+      <div class="card" data-id="${i.item_id}">
+        <div>
+          <div class="name">${i.name}</div>
+          <div class="unit">단위 <b>${i.stock_unit}</b> · 발주 ${i.order_unit}</div>
+        </div>
+        <input class="qty num" inputmode="decimal" placeholder="0" aria-label="${i.name} 재고">
+        <div class="stockout">
+          <input type="checkbox" id="so${i.item_id}">
+          <label for="so${i.item_id}">오늘 결품(재고 없음)</label>
+        </div>
+      </div>`).join("");
+    return `<div class="zone">${z}</div>${rows}`;
+  }).join("");
+
+  $("#items").querySelectorAll(".card").forEach(c=>{
+    const qty = c.querySelector(".qty");
+    const so = c.querySelector('input[type=checkbox]');
+    qty.addEventListener("input", checkReady);
+    so.addEventListener("change", ()=>{
+      c.classList.toggle("out", so.checked);
+      if(so.checked){qty.value="0";} checkReady();
+    });
+  });
+  checkReady();
+}
+
+function checkReady(){
+  const cards=[...document.querySelectorAll(".card")];
+  const ok = cards.every(c=>c.querySelector(".qty").value.trim()!=="");
+  $("#calcBtn").disabled = !ok;
+}
+
+async function calc(){
+  const btn=$("#calcBtn"); btn.disabled=true; btn.textContent="계산 중…";
+  const store_id=+$("#store").value, on=$("#date").value;
+  const cards=[...document.querySelectorAll(".card")];
+  const out=[];
+  try{
+    for(const c of cards){
+      const item_id=+c.dataset.id;
+      const stock_qty=parseFloat(c.querySelector(".qty").value)||0;
+      const is_stockout=c.querySelector('input[type=checkbox]').checked;
+      const res=await fetch(API+"/stock-input",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({store_id,item_id,date:on,stock_qty,is_stockout})
+      }).then(r=>r.json());
+      out.push(res);
+    }
+    showResults(out);
+  }catch(e){
+    toast("전송 중 오류가 났어요");
+  }finally{
+    btn.textContent="발주 계산하기";
+  }
+}
+
+function showResults(list){
+  $("#viewLabel").textContent="발주 추천";
+  $("#inputView").classList.add("hidden");
+  $("#resultView").classList.remove("hidden");
+  $("#calcBtn").classList.add("hidden");
+  $("#backBtn").classList.remove("hidden");
+
+  const html = list.map(r=>{
+    if(r.status==="MANUAL"){
+      return slip(r.item_name,`<span class="badge manual">수동 발주</span>`,
+        `<div class="row"><span class="k">사유</span><span>데이터 부족(유효 ${r.valid_days}일)</span></div>`);
+    }
+    const zero = r.order_qty<=0;
+    return slip(r.item_name,
+      zero?`<span class="badge none">발주 없음</span>`:`<span class="badge order">발주</span>`,
+      `<div class="row"><span class="k">잔여</span><span class="num">${r.today_stock} ${r.stock_unit}</span></div>
+       <div class="row"><span class="k">추천 발주</span><span class="big ${zero?'zero':''}">${r.order_qty} ${r.order_unit}</span></div>`);
+  }).join("");
+
+  const anyOrder = list.some(r=>r.status==="OK"&&r.order_qty>0);
+  $("#results").innerHTML = html +
+    (anyOrder?`<button class="btn" id="sendBtn" style="margin-top:6px">발주서 전송</button>`:"");
+  const sb=$("#sendBtn"); if(sb) sb.onclick=()=>{sb.disabled=true;sb.textContent="전송 완료 ✓";toast("관리자에게 발주서를 보냈어요");};
+  window.scrollTo(0,0);
+}
+function slip(name,badge,rows){
+  return `<div class="slip"><div class="top"><span class="name">${name}</span>${badge}</div>${rows}</div>`;
+}
+
+function back(){
+  $("#viewLabel").textContent="마감 재고 입력";
+  $("#resultView").classList.add("hidden");
+  $("#inputView").classList.remove("hidden");
+  $("#calcBtn").classList.remove("hidden");$("#calcBtn").disabled=false;
+  $("#backBtn").classList.add("hidden");
+  window.scrollTo(0,0);
+}
+
+$("#calcBtn").onclick=calc;
+$("#backBtn").onclick=back;
+init();
+</script>
+</body>
+</html>
