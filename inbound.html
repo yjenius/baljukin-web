@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>발주왕 · 입고 확인</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#12211c;--paper:#f6f4ec;--card:#fff;--green:#1f7a4d;--green-d:#155f3b;
+    --line:#dcd8cb;--muted:#6b7169;--warn:#c23b2b;
+    --shadow:0 1px 0 rgba(0,0,0,.04),0 8px 24px -18px rgba(18,33,28,.45)}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{background:var(--paper);color:var(--ink);font-family:"Noto Sans KR",system-ui,sans-serif;padding-bottom:110px}
+  .num{font-family:"Archivo","Noto Sans KR";font-variant-numeric:tabular-nums}
+  header{position:sticky;top:0;z-index:20;background:var(--ink);color:#eef2ec;padding:12px 14px;box-shadow:var(--shadow)}
+  .brand{display:flex;align-items:baseline;gap:8px}
+  .brand b{font-family:"Archivo";font-weight:800;font-size:19px}
+  .brand span{font-size:12px;color:#9fb3a6}
+  .ctrls{display:flex;gap:8px;margin-top:10px}
+  .dateinput,.search{background:#1b2f28;color:#eef2ec;border:1px solid #2c463c;border-radius:11px;padding:10px 12px;font-size:15px;font-family:inherit}
+  .dateinput{flex:1}
+  .search{width:100%;margin-top:8px}
+  main{max-width:680px;margin:0 auto;padding:12px}
+  h2{font-size:13px;color:var(--muted);letter-spacing:.5px;margin:16px 4px 8px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px;margin-bottom:8px}
+  .camBtn{width:100%;border:2px dashed var(--line);border-radius:14px;padding:22px;background:#fbfaf5;
+    font-size:16px;font-weight:700;color:var(--green-d);cursor:pointer}
+  .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .thumb{position:relative;width:84px;height:84px;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+  .thumb img{width:100%;height:100%;object-fit:cover}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:8px;
+    box-shadow:var(--shadow);display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
+  .card.filled{border-color:var(--green)}
+  .name{font-weight:700;font-size:16px}
+  .meta{font-size:12px;color:var(--muted)}
+  .qtywrap{display:flex;align-items:center;gap:6px}
+  .qty{width:96px;text-align:right;border:1px solid var(--line);border-radius:11px;padding:11px;
+    font-size:20px;font-weight:700;background:#fbfaf5}
+  .qty:focus{outline:2px solid var(--green)}
+  .u{font-size:13px;color:var(--muted);min-width:24px}
+  .bar{position:fixed;left:0;right:0;bottom:0;z-index:30;
+    background:linear-gradient(180deg,rgba(246,244,236,0),var(--paper) 28%);
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
+  .bar .inner{max-width:680px;margin:0 auto}
+  .btn{width:100%;border:none;border-radius:13px;padding:15px;font-family:"Archivo";font-weight:700;
+    font-size:16px;background:var(--green);color:#fff;cursor:pointer;box-shadow:var(--shadow)}
+  .btn:disabled{background:#9fb0a6}
+  .toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:var(--ink);color:#fff;
+    padding:12px 18px;border-radius:12px;font-size:14px;opacity:0;transition:.25s;z-index:40}
+  .toast.show{opacity:1;bottom:120px}
+  .toast.err{background:var(--warn)}
+  .hint{font-size:12px;color:var(--muted);margin:6px 4px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><b>발주왕</b><span>입고 확인</span></div>
+  <div class="ctrls"><input class="dateinput" type="date" id="date"></div>
+  <input class="search" id="search" placeholder="🔍 품목 검색" autocomplete="off">
+</header>
+
+<main>
+  <h2>① 입고 전표 사진</h2>
+  <div class="panel">
+    <button class="camBtn" id="camBtn">📷 전표 촬영 / 사진 올리기</button>
+    <input type="file" id="camInput" accept="image/*" capture="environment" multiple style="display:none">
+    <div class="thumbs" id="thumbs"></div>
+  </div>
+
+  <h2>② 입고 수량 (발주단위 아님, 낱개/재고단위 기준)</h2>
+  <div class="hint">어제 발주한 품목이 위로 와요. 반품·수량차이 있으면 숫자만 고치면 돼요.</div>
+  <div id="items">불러오는 중…</div>
+</main>
+
+<div class="bar"><div class="inner">
+  <button class="btn" id="saveBtn">입고 저장</button>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API="https://baljuking.onrender.com", STORE=1;
+const $=s=>document.querySelector(s);
+let items=[];
+
+function toast(t,e){const el=$("#toast");el.textContent=t;el.className="toast show"+(e?" err":"");
+  clearTimeout(el._t);el._t=setTimeout(()=>el.className="toast",2400);}
+function today(){return new Date().toISOString().slice(0,10);}
+function yesterday(d){const x=new Date(d);x.setDate(x.getDate()-1);return x.toISOString().slice(0,10);}
+
+async function init(){
+  $("#date").value=today();
+  await load();
+}
+async function load(){
+  const on=$("#date").value;
+  try{
+    const [its,orders,inb,recs]=await Promise.all([
+      fetch(API+"/items").then(r=>r.json()),
+      fetch(`${API}/orders?store_id=${STORE}&on=${yesterday(on)}`).then(r=>r.json()),
+      fetch(`${API}/inbound?store_id=${STORE}&on=${on}`).then(r=>r.json()),
+      fetch(`${API}/receipts?store_id=${STORE}&on=${on}`).then(r=>r.json())
+    ]);
+    items=its;
+    items.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
+    const ordered=new Map(orders.map(o=>[o.item_id,o]));
+    const saved=new Map(inb.map(x=>[x.item_id,x.inbound_qty]));
+    // 발주품목 먼저
+    items.sort((a,b)=>(ordered.has(b.item_id)?1:0)-(ordered.has(a.item_id)?1:0));
+    $("#items").innerHTML=items.map(i=>{
+      const o=ordered.get(i.item_id);
+      const v=saved.has(i.item_id)?saved.get(i.item_id):
+              (o? o.order_qty*(i.conversion_qty||1) : "");
+      return `<div class="card${v!==""?" filled":""}" data-id="${i.item_id}" data-name="${i.name}">
+        <div><div class="name">${i.name}</div>
+          <div class="meta">${o?`어제 발주 ${o.order_qty} ${o.order_unit} → 예상 ${o.order_qty*(i.conversion_qty||1)} ${i.stock_unit}`:"발주 없음"}</div></div>
+        <div class="qtywrap"><input class="qty num" inputmode="decimal" placeholder="—" value="${v}">
+          <span class="u">${i.stock_unit}</span></div>
+      </div>`;
+    }).join("");
+    document.querySelectorAll(".card .qty").forEach(q=>q.addEventListener("input",
+      e=>e.target.closest(".card").classList.toggle("filled",e.target.value.trim()!=="")));
+    $("#thumbs").innerHTML=recs.map(r=>`<div class="thumb"><img src="${r.image_url}"></div>`).join("");
+  }catch(e){$("#items").innerHTML="서버 연결 실패. 새로고침 해주세요.";}
+}
+$("#date").onchange=load;
+$("#search").oninput=()=>{
+  const kw=$("#search").value.trim().toLowerCase();
+  document.querySelectorAll(".card").forEach(c=>
+    c.style.display=(!kw||c.dataset.name.toLowerCase().includes(kw))?"":"none");
+};
+
+$("#camBtn").onclick=()=>$("#camInput").click();
+$("#camInput").onchange=async e=>{
+  for(const f of e.target.files){
+    const fd=new FormData();
+    fd.append("store_id",STORE);fd.append("on",$("#date").value);fd.append("file",f);
+    try{
+      const r=await fetch(API+"/receipt/upload",{method:"POST",body:fd}).then(r=>r.json());
+      $("#thumbs").insertAdjacentHTML("beforeend",`<div class="thumb"><img src="${r.url}"></div>`);
+    }catch(err){toast("사진 업로드 실패",1);}
+  }
+  e.target.value="";
+};
+
+$("#saveBtn").onclick=async()=>{
+  const btn=$("#saveBtn");btn.disabled=true;btn.textContent="저장 중…";
+  const lines=[...document.querySelectorAll(".card")].map(c=>{
+    const v=c.querySelector(".qty").value.trim();
+    return v===""?null:{item_id:+c.dataset.id,inbound_qty:parseFloat(v)||0};
+  }).filter(Boolean);
+  try{
+    const r=await fetch(API+"/inbound/save",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({store_id:STORE,date:$("#date").value,lines})}).then(r=>r.json());
+    toast(`입고 저장 완료 (${r.saved}품목). 다시 고쳐 저장해도 돼요`);
+  }catch(e){toast("저장 실패",1);}
+  finally{btn.disabled=false;btn.textContent="입고 저장";}
+};
+
+init();
+</script>
+</body>
+</html>
