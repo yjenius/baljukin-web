@@ -149,7 +149,7 @@ function renderItems(){
     return `<div class="card" data-id="${i.item_id}" data-name="${i.name}" data-p="${pt}">
       <div>
         <div class="name">${i.name}</div>
-        <div class="meta"><span class="tag">${pt}</span>${st?`<span>${st}</span>`:""}${i.location?`<span>위치 ${i.location}</span>`:""}<span>${i.stock_unit}</span></div>
+        <div class="meta"><span class="tag">${pt}</span>${st?`<span>${st}</span>`:""}${i.location?`<span>위치 ${i.location}</span>`:""}</div>
       </div>
       <div class="qtywrap">
         <input class="qty num" inputmode="decimal" placeholder="—" value="${d.qty??""}" aria-label="${i.name}">
