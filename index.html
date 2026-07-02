@@ -125,6 +125,7 @@ async function init(){
       fetch(API+"/items").then(r=>r.json())]);
     $("#store").innerHTML=stores.map(s=>`<option value="${s.store_id}">${s.name}</option>`).join("");
     items=its;                                  // item_id 순 = 엑셀 순
+    items.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
     buildChips(); renderItems();
   }catch(e){ $("#items").innerHTML="서버에 연결하지 못했어요.<br>무료 서버는 첫 접속 시 최대 1분 걸려요. 잠시 뒤 새로고침 해주세요."; }
 }
