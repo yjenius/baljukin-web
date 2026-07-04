@@ -126,7 +126,7 @@ async function load(){
       const o=ordered.get(i.item_id);
       const v=saved.has(i.item_id)?saved.get(i.item_id):
               (o? o.order_qty*(i.conversion_qty||1) : "");
-      return `<div class="card${v!==""?" filled":""}" data-id="${i.item_id}" data-name="${i.name}" data-sup="${i.supplier||'미지정'}">
+      return `<div class="card${v!==""?" filled":""}" data-id="${i.item_id}" data-name="${i.name}" data-sup="${(i.supplier||'미지정').toUpperCase()}">
         <div><div class="name">${i.name}</div>
           <div class="meta">${o?`어제 발주 ${o.order_qty} ${o.order_unit} → 예상 ${o.order_qty*(i.conversion_qty||1)} ${i.stock_unit}`:"발주 없음"}</div></div>
         <div class="qtywrap"><input class="qty num" inputmode="decimal" placeholder="—" value="${v}">
@@ -136,7 +136,7 @@ async function load(){
     document.querySelectorAll(".card .qty").forEach(q=>q.addEventListener("input",
       e=>e.target.closest(".card").classList.toggle("filled",e.target.value.trim()!=="")));
     $("#thumbs").innerHTML=recs.map(r=>`<div class="thumb"><img src="${r.image_url}"><span class="del" onclick="delR(${r.id})">✕</span></div>`).join("");
-    const sups=["전체",...new Set(items.map(i=>i.supplier||"미지정"))];
+    const sups=["전체",...new Set(items.map(i=>(i.supplier||"미지정").toUpperCase()))];
     $("#chips").innerHTML=sups.map(s=>`<div class="chip${s===filterSup?" on":""}" data-s="${s}">${s}</div>`).join("");
     $("#chips").querySelectorAll(".chip").forEach(c=>c.onclick=()=>{filterSup=c.dataset.s;
       $("#chips").querySelectorAll(".chip").forEach(x=>x.classList.toggle("on",x===c));applyF();});
