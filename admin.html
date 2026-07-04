@@ -60,6 +60,14 @@
 </style>
 </head>
 <body>
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+const sbA=createClient("https://uisdezsmyknmwayexhbu.supabase.co","sb_publishable_18Z8F9WYbJkbmFGIumZdKA_f6YGy9po");
+const {data:{session}}=await sbA.auth.getSession();
+if(!session)location.href="index.html";
+window.sbAuth=sbA;
+</script>
+
 <header>
   <div class="brand"><b>발주왕</b><span>품목 관리</span>
     <a class="navlink" href="index.html">← 재고 입력 화면</a></div>
