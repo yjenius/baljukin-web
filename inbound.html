@@ -241,6 +241,7 @@ function showMatch(un){
   ${un.map((r,i)=>`<div data-i="${i}" style="border:1px solid var(--line);border-radius:12px;padding:10px">
     <div style="font-weight:700">${r.raw} <span style="color:var(--muted);font-weight:400">수량 ${r.qty}</span></div>
     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+      <input class="mSearch" placeholder="🔍 품목 검색" oninput="filtSel(this)" style="flex:1;min-width:120px;font:inherit;padding:8px;border:1px solid var(--line);border-radius:9px">
       <select class="mSel" style="flex:1;min-width:140px;font:inherit;padding:8px;border:1px solid var(--line);border-radius:9px">
         <option value="">기존 품목 선택…</option>${opts}</select>
       <button class="btn" style="flex:0 0 auto;padding:8px 12px;font-size:13px" onclick="doMatch(this,${i})">매칭</button>
@@ -252,6 +253,14 @@ function showMatch(un){
   document.body.appendChild(dlg);
   dlg._un=un; dlg.showModal();
 }
+window.filtSel=inp=>{
+  const kw=inp.value.trim().toLowerCase();
+  const sel=inp.parentElement.querySelector(".mSel");
+  [...sel.options].forEach(o=>{if(!o.value)return;
+    o.hidden=kw&&!o.textContent.toLowerCase().includes(kw);});
+  const vis=[...sel.options].filter(o=>o.value&&!o.hidden);
+  if(kw&&vis.length===1)sel.value=vis[0].value;
+};
 window.doMatch=async(btn,i)=>{
   const dlg=document.getElementById("matchDlg"), r=dlg._un[i];
   const sel=btn.parentElement.querySelector(".mSel");
