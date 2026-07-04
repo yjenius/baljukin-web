@@ -240,7 +240,7 @@ function showResults(list){
   if(!need.length){$("#results").innerHTML="<div class='msg'>지금 발주할 품목이 없어요. 재고가 충분합니다 👍</div>";
     window.scrollTo(0,0);return;}
   const groups={};
-  need.forEach(r=>{const s=r.supplier||"미지정";(groups[s]=groups[s]||[]).push(r);});
+  need.forEach(r=>{const s=(r.supplier||"미지정").toUpperCase();(groups[s]=groups[s]||[]).push(r);});
   $("#results").innerHTML=Object.entries(groups).map(([sup,rows])=>{
     const body=rows.map(r=>{
       const manual=r.status==="MANUAL";
