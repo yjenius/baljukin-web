@@ -79,6 +79,7 @@
   .fab{position:fixed;right:14px;bottom:118px;z-index:25;width:52px;height:52px;border-radius:50%;
     border:none;background:var(--ink);color:#fff;font-size:26px;line-height:1;cursor:pointer;box-shadow:var(--shadow)}
   .modalbg{position:fixed;inset:0;background:rgba(18,33,28,.55);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
+  .modalbg.hidden{display:none}
   .modal{background:#fff;border-radius:16px;padding:16px;width:100%;max-width:420px;max-height:85vh;overflow:auto}
   .modal h3{margin:0 0 12px;font-size:17px}
   .modal label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
@@ -134,8 +135,8 @@ window.sbToken=session?.access_token||null;
     <h3>새 품목 등록</h3>
     <label>품명 *</label><input id="nItem" placeholder="예) 시메사바">
     <div class="row2">
-      <div><label>파트</label><select id="nPart"></select></div>
-      <div><label>보관</label><select id="nStorage"><option>냉장</option><option>냉동</option><option>기타</option></select></div>
+      <div><label>파트</label><input id="nPart" list="partList" placeholder="선택 또는 입력"><datalist id="partList"></datalist></div>
+      <div><label>보관</label><input id="nStorage" list="storList" placeholder="선택 또는 입력"><datalist id="storList"></datalist></div>
     </div>
     <div class="row2">
       <div><label>발주처</label><input id="nSup" placeholder="예) 명인푸드"></div>
@@ -375,7 +376,9 @@ $("#loadOrder").onclick=async()=>{
 /* ── 새 품목 등록 ── */
 $("#fab").onclick=()=>{
   const ps=[...new Set(items.map(i=>i.part||"기타"))];
-  $("#nPart").innerHTML=ps.map(p=>`<option>${p}</option>`).join("");
+  $("#partList").innerHTML=ps.map(p=>`<option value="${p}">`).join("");
+  const ss=[...new Set(["냉장","냉동","기타",...items.map(i=>i.storage||i.zone).filter(Boolean)])];
+  $("#storList").innerHTML=ss.map(s=>`<option value="${s}">`).join("");
   $("#modalbg").classList.remove("hidden");
 };
 $("#nCancel").onclick=()=>$("#modalbg").classList.add("hidden");
