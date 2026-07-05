@@ -380,7 +380,7 @@ function showResults(list){
           <div class="sub">잔여 ${r.today_stock} ${r.stock_unit}${manual?" · 데이터 부족(직접 입력)":""}</div></div>
         <div style="display:flex;align-items:center;gap:6px">
           ${manual?'<span class="badge manual">수동</span>':""}
-          <button class="supbtn" data-id="${r.item_id}">⇄</button>
+          <button class="supbtn" data-id="${r.item_id}">거래처↔</button>
           <input class="oqty num" data-id="${r.item_id}" data-sup="${sup}" data-name="${r.item_name}"
             data-unit="${r.order_unit}" inputmode="decimal" value="${q}">
           <span class="u">${r.order_unit}</span></div>
