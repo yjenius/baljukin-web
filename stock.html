@@ -388,6 +388,17 @@ function showResults(list){
     applyFilter();
   });
 
+  // 서버에 저장된 오늘 발주 반영 → 그 위에 로컬 임시수정 반영
+  fetch(`${API}/orders?store_id=${$("#store").value}&on=${$("#date").value}`)
+    .then(r=>r.json()).then(rows=>{
+      rows.forEach(o=>{const el=document.querySelector(`.oqty[data-id="${o.item_id}"]`);
+        if(el)el.value=o.order_qty;});
+      const od2=JSON.parse(localStorage.getItem(odKey())||"{}");
+      document.querySelectorAll(".oqty").forEach(el=>{
+        if(od2[el.dataset.id]!=null)el.value=od2[el.dataset.id];});
+      if(rows.length)$("#orderBtn").textContent="발주 수정 저장";
+    }).catch(()=>{});
+
   // 저장된 발주수량 복원 + 자동 임시저장 + 0 전체선택
   const od=JSON.parse(localStorage.getItem(odKey())||"{}");
   document.querySelectorAll(".oqty").forEach(el=>{
@@ -423,6 +434,7 @@ $("#orderBtn").onclick=async()=>{
     const r=await fetch(API+"/orders/save",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({store_id:+$("#store").value,date:$("#date").value,lines})}).then(r=>r.json());
     toast(`발주 저장 완료 (${r.saved}품목). 수정 후 다시 눌러도 돼요`);
+    localStorage.removeItem(odKey());
     btn.textContent="발주 수정 저장";
   }catch(e){toast("저장 실패",1);btn.textContent="발주하기";}
   finally{btn.disabled=false;}
