@@ -88,6 +88,8 @@
   .modal .row2>div{flex:1}
   .modal .acts{display:flex;gap:8px;margin-top:16px}
   .btn.sm{padding:12px;font-size:15px}
+  .supbtn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 8px;font-size:12px;cursor:pointer;color:var(--muted)}
+  .suplist button{display:block;width:100%;margin:6px 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fbfaf5;font-size:15px;font-family:inherit;cursor:pointer;text-align:left}
 </style>
 </head>
 <body>
@@ -150,6 +152,14 @@ window.sbToken=session?.access_token||null;
       <button class="btn ghost sm" id="nCancel">닫기</button>
       <button class="btn sm" id="nSave">등록</button>
     </div>
+  </div>
+</div>
+
+<div class="modalbg hidden" id="supbg">
+  <div class="modal">
+    <h3>거래처 변경 (오늘 발주서만)</h3>
+    <div class="suplist" id="supList"></div>
+    <div class="acts"><button class="btn ghost sm" id="supCancel">닫기</button></div>
   </div>
 </div>
 
@@ -358,8 +368,9 @@ function showResults(list){
   const need=list.filter(r=>r.status==="MANUAL"||r.order_qty>0);
   if(!need.length){$("#results").innerHTML="<div class='msg'>지금 발주할 품목이 없어요. 재고가 충분합니다 👍</div>";
     $("#chips").classList.add("hidden");window.scrollTo(0,0);return;}
+  const ov=JSON.parse(localStorage.getItem(supKey())||"{}");
   const groups={};
-  need.forEach(r=>{const s=(r.supplier||"미지정").toUpperCase();(groups[s]=groups[s]||[]).push(r);});
+  need.forEach(r=>{const s=(ov[r.item_id]||r.supplier||"미지정").toUpperCase();(groups[s]=groups[s]||[]).push(r);});
   $("#results").innerHTML=Object.entries(groups).map(([sup,rows])=>{
     const body=rows.map(r=>{
       const manual=r.status==="MANUAL";
@@ -369,6 +380,7 @@ function showResults(list){
           <div class="sub">잔여 ${r.today_stock} ${r.stock_unit}${manual?" · 데이터 부족(직접 입력)":""}</div></div>
         <div style="display:flex;align-items:center;gap:6px">
           ${manual?'<span class="badge manual">수동</span>':""}
+          <button class="supbtn" data-id="${r.item_id}">⇄</button>
           <input class="oqty num" data-id="${r.item_id}" data-sup="${sup}" data-name="${r.item_name}"
             data-unit="${r.order_unit}" inputmode="decimal" value="${q}">
           <span class="u">${r.order_unit}</span></div>
@@ -409,8 +421,26 @@ function showResults(list){
       d[el.dataset.id]=el.value;localStorage.setItem(odKey(),JSON.stringify(d));
     });
   });
+  // 거래처 변경(오늘만)
+  document.querySelectorAll(".supbtn").forEach(b=>b.onclick=()=>{
+    supTarget=+b.dataset.id;
+    const sups=[...new Set([...items.map(i=>(i.supplier||"").toUpperCase()).filter(Boolean),"미지정"])];
+    $("#supList").innerHTML=sups.map(s=>`<button data-s="${s}">${s}</button>`).join("");
+    $("#supList").querySelectorAll("button").forEach(x=>x.onclick=()=>{
+      const o=JSON.parse(localStorage.getItem(supKey())||"{}");
+      o[supTarget]=x.dataset.s;localStorage.setItem(supKey(),JSON.stringify(o));
+      $("#supbg").classList.add("hidden");
+      showResults(lastResults);
+      toast(`오늘 발주서에서 ${x.dataset.s}(으)로 옮겼어요`);
+    });
+    $("#supbg").classList.remove("hidden");
+  });
   window.scrollTo(0,0);
 }
+function supKey(){return `osup:${$("#store").value}:${$("#date").value}`;}
+let supTarget=null;
+$("#supCancel").onclick=()=>$("#supbg").classList.add("hidden");
+$("#supbg").onclick=e=>{if(e.target.id==="supbg")$("#supbg").classList.add("hidden");};
 function odKey(){return `odraft:${$("#store").value}:${$("#date").value}`;}
 let filterSup="전체";
 
