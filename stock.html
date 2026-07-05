@@ -268,8 +268,11 @@ async function loadPrev(){
 function applyFilter(){
   const kw=$("#search").value.trim().toLowerCase();
   if(!$("#resultView").classList.contains("hidden")){
-    document.querySelectorAll("#results .slip").forEach(s=>
-      s.style.display=(!kw||(s.dataset.name||"").toLowerCase().includes(kw))?"":"none");
+    document.querySelectorAll("#results .slip").forEach(s=>{
+      const okS=filterSup==="전체"||s.dataset.sup===filterSup;
+      const okK=!kw||(s.dataset.name||"").toLowerCase().includes(kw);
+      s.style.display=(okS&&okK)?"":"none";
+    });
     document.querySelectorAll("#results .grp").forEach(g=>{
       let el=g.nextElementSibling,any=false;
       while(el&&!el.classList.contains("grp")){if(el.style.display!=="none")any=true;el=el.nextElementSibling;}
@@ -347,21 +350,21 @@ function showResults(list){
   $("#viewLabel").textContent="발주 확인";
   $("#inputView").classList.add("hidden");$("#resultView").classList.remove("hidden");
   $("#barInput").classList.add("hidden");$("#barResult").classList.remove("hidden");
-  $("#chips").classList.add("hidden");$("#prog").classList.add("hidden");
+  $("#prog").classList.add("hidden");
   $("#search").value="";
   $("#fab").classList.add("hidden");$("#expStock").classList.add("hidden");
 
   // 발주 필요한 것만, 발주처별 그룹
   const need=list.filter(r=>r.status==="MANUAL"||r.order_qty>0);
   if(!need.length){$("#results").innerHTML="<div class='msg'>지금 발주할 품목이 없어요. 재고가 충분합니다 👍</div>";
-    window.scrollTo(0,0);return;}
+    $("#chips").classList.add("hidden");window.scrollTo(0,0);return;}
   const groups={};
   need.forEach(r=>{const s=(r.supplier||"미지정").toUpperCase();(groups[s]=groups[s]||[]).push(r);});
   $("#results").innerHTML=Object.entries(groups).map(([sup,rows])=>{
     const body=rows.map(r=>{
       const manual=r.status==="MANUAL";
       const q=manual?0:r.order_qty;
-      return `<div class="slip" data-name="${r.item_name}">
+      return `<div class="slip" data-name="${r.item_name}" data-sup="${sup}">
         <div><div class="nm">${r.item_name}</div>
           <div class="sub">잔여 ${r.today_stock} ${r.stock_unit}${manual?" · 데이터 부족(직접 입력)":""}</div></div>
         <div style="display:flex;align-items:center;gap:6px">
@@ -371,17 +374,41 @@ function showResults(list){
           <span class="u">${r.order_unit}</span></div>
       </div>`;
     }).join("");
-    return `<div class="grp"><span class="sup">📦 ${sup}</span><span>${rows.length}품목</span></div>${body}`;
+    return `<div class="grp" data-sup="${sup}"><span class="sup">📦 ${sup}</span><span>${rows.length}품목</span></div>${body}`;
   }).join("");
+
+  // 거래처 탭
+  filterSup="전체";
+  const sups=["전체",...Object.keys(groups)];
+  $("#chips").innerHTML=sups.map(s=>`<div class="chip${s==="전체"?" on":""}" data-s="${s}">${s}</div>`).join("");
+  $("#chips").classList.remove("hidden");
+  $("#chips").querySelectorAll(".chip").forEach(c=>c.onclick=()=>{
+    filterSup=c.dataset.s;
+    $("#chips").querySelectorAll(".chip").forEach(x=>x.classList.toggle("on",x===c));
+    applyFilter();
+  });
+
+  // 저장된 발주수량 복원 + 자동 임시저장 + 0 전체선택
+  const od=JSON.parse(localStorage.getItem(odKey())||"{}");
+  document.querySelectorAll(".oqty").forEach(el=>{
+    if(od[el.dataset.id]!=null)el.value=od[el.dataset.id];
+    el.addEventListener("focus",()=>el.select());
+    el.addEventListener("input",()=>{
+      const d=JSON.parse(localStorage.getItem(odKey())||"{}");
+      d[el.dataset.id]=el.value;localStorage.setItem(odKey(),JSON.stringify(d));
+    });
+  });
   window.scrollTo(0,0);
 }
+function odKey(){return `odraft:${$("#store").value}:${$("#date").value}`;}
+let filterSup="전체";
 
 $("#backBtn").onclick=()=>{
   $("#viewLabel").textContent="마감 재고 입력";
   $("#resultView").classList.add("hidden");$("#inputView").classList.remove("hidden");
   $("#barResult").classList.add("hidden");$("#barInput").classList.remove("hidden");
   $("#search").classList.remove("hidden");$("#chips").classList.remove("hidden");$("#prog").classList.remove("hidden");
-  $("#search").value="";applyFilter();
+  $("#search").value="";filterPart="전체";buildChips();applyFilter();
   $("#fab").classList.remove("hidden");$("#expStock").classList.remove("hidden");
   window.scrollTo(0,0);
 };
