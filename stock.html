@@ -75,6 +75,18 @@
   .toast.err{background:var(--warn)}
   .hidden{display:none}
   .link{color:#9fb3a6;font-size:13px;text-decoration:underline;cursor:pointer;margin-left:auto}
+  .prev{font-size:12px;color:var(--muted);white-space:nowrap}
+  .fab{position:fixed;right:14px;bottom:118px;z-index:25;width:52px;height:52px;border-radius:50%;
+    border:none;background:var(--ink);color:#fff;font-size:26px;line-height:1;cursor:pointer;box-shadow:var(--shadow)}
+  .modalbg{position:fixed;inset:0;background:rgba(18,33,28,.55);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
+  .modal{background:#fff;border-radius:16px;padding:16px;width:100%;max-width:420px;max-height:85vh;overflow:auto}
+  .modal h3{margin:0 0 12px;font-size:17px}
+  .modal label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+  .modal input,.modal select{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:15px;font-family:inherit;background:#fbfaf5}
+  .modal .row2{display:flex;gap:8px}
+  .modal .row2>div{flex:1}
+  .modal .acts{display:flex;gap:8px;margin-top:16px}
+  .btn.sm{padding:12px;font-size:15px}
 </style>
 </head>
 <body>
@@ -84,12 +96,13 @@ const sbA=createClient("https://uisdezsmyknmwayexhbu.supabase.co","sb_publishabl
 const {data:{session}}=await sbA.auth.getSession();
 if(!session)location.href="index.html";
 window.sbAuth=sbA;
+window.sbToken=session?.access_token||null;
 </script>
 
 
 <header>
   <div class="brand"><b>발주왕</b><span id="viewLabel">마감 재고 입력</span>
-    <a href="index.html" style="color:#9fb3a6;font-size:13px;text-decoration:none;margin-left:auto;margin-right:10px">🏠 메인</a><span class="link" id="loadOrder" style="margin-left:0">오늘 발주 불러오기</span></div>
+    <a href="index.html" style="color:#9fb3a6;font-size:13px;text-decoration:none;margin-left:auto;margin-right:10px">🏠 메인</a><span class="link" id="loadOrder" style="margin-left:0;margin-right:10px">오늘 발주 불러오기</span><span class="link" id="expStock" style="margin-left:0">재고 엑셀</span></div>
   <div class="ctrls">
     <select id="store" style="display:none"></select>
     <input class="dateinput" type="date" id="date" style="flex:1">
@@ -109,7 +122,33 @@ window.sbAuth=sbA;
   </div>
   <div class="inner hidden" id="barResult">
     <button class="btn ghost" id="backBtn">재고 수정</button>
+    <button class="btn ghost" id="expOrder">엑셀</button>
     <button class="btn" id="orderBtn">발주하기</button>
+  </div>
+</div>
+
+<button class="fab" id="fab" title="새 품목 등록">＋</button>
+
+<div class="modalbg hidden" id="modalbg">
+  <div class="modal">
+    <h3>새 품목 등록</h3>
+    <label>품명 *</label><input id="nItem" placeholder="예) 시메사바">
+    <div class="row2">
+      <div><label>파트</label><select id="nPart"></select></div>
+      <div><label>보관</label><select id="nStorage"><option>냉장</option><option>냉동</option><option>기타</option></select></div>
+    </div>
+    <div class="row2">
+      <div><label>발주처</label><input id="nSup" placeholder="예) 명인푸드"></div>
+      <div><label>위치 번호</label><input id="nLoc" inputmode="decimal" placeholder="예) 12"></div>
+    </div>
+    <div class="row2">
+      <div><label>재고 단위(규격)</label><input id="nSU" placeholder="예) ea, 팩, kg"></div>
+      <div><label>발주 단위</label><input id="nOU" placeholder="예) box, 봉"></div>
+    </div>
+    <div class="acts">
+      <button class="btn ghost sm" id="nCancel">닫기</button>
+      <button class="btn sm" id="nSave">등록</button>
+    </div>
   </div>
 </div>
 
@@ -161,11 +200,12 @@ function renderItems(){
         <div class="meta"><span class="tag">${pt}</span>${st?`<span>${st}</span>`:""}${i.location?`<span>위치 ${i.location}</span>`:""}</div>
       </div>
       <div class="qtywrap">
+        <span class="prev" data-prev="${i.item_id}"></span>
         <input class="qty num" inputmode="decimal" placeholder="—" value="${d.qty??""}" aria-label="${i.name}">
         <span class="u">${i.stock_unit}</span>
       </div>
       <div class="stockout"><input type="checkbox" id="so${i.item_id}" ${d.so?"checked":""}>
-        <label for="so${i.item_id}">결품(재고 없음)</label></div>
+        <label for="so${i.item_id}">발주 검토(재고 없음)</label></div>
     </div>`;
   }).join("");
 
@@ -177,7 +217,34 @@ function renderItems(){
     if(so.checked)c.classList.add("out");
     if(qty.value.trim()!=="")c.classList.add("filled");
   });
-  applyFilter(); updProg();
+  applyFilter(); updProg(); loadPrev();
+}
+
+/* ── 전일 재고 표시 (Supabase 직접 조회) ── */
+const SB="https://uisdezsmyknmwayexhbu.supabase.co/rest/v1";
+const SBKEY="sb_publishable_18Z8F9WYbJkbmFGIumZdKA_f6YGy9po";
+async function getToken(){for(let i=0;i<20;i++){if(window.sbToken)return window.sbToken;
+  await new Promise(r=>setTimeout(r,250));}return null;}
+async function sbFetch(path,opt={}){const t=await getToken();
+  return fetch(SB+path,{...opt,headers:{apikey:SBKEY,Authorization:`Bearer ${t||SBKEY}`,
+    "Content-Type":"application/json",...(opt.headers||{})}});}
+let prevMap={};
+async function loadPrev(){
+  prevMap={};
+  try{
+    const d=new Date($("#date").value+"T00:00:00");d.setDate(d.getDate()-1);
+    const y=d.toISOString().slice(0,10);
+    const r=await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=eq.${y}&select=*`);
+    if(!r.ok)return;
+    (await r.json()).forEach(row=>{
+      const q=row.stock_qty??row.qty??row.closing_qty??row.closing_stock;
+      if(q!=null)prevMap[row.item_id]=q;
+    });
+    document.querySelectorAll("[data-prev]").forEach(el=>{
+      const q=prevMap[el.dataset.prev];
+      el.textContent=q!=null?`전일 ${q}`:"";
+    });
+  }catch(e){}
 }
 
 function applyFilter(){
@@ -209,7 +276,14 @@ function autosave(){
   localStorage.setItem(draftKey(),JSON.stringify(d));
 }
 
-$("#tempBtn").onclick=()=>{autosave();toast("임시저장했어요 (이 기기에서 이어서 가능)");};
+$("#tempBtn").onclick=()=>{autosave();sortUnfilled();toast("임시저장 완료 · 미입력 품목을 위로 올렸어요");};
+function sortUnfilled(){
+  const wrap=$("#items");
+  [...wrap.querySelectorAll(".card")]
+    .sort((a,b)=>(a.classList.contains("filled")?1:0)-(b.classList.contains("filled")?1:0))
+    .forEach(c=>wrap.appendChild(c));
+  window.scrollTo(0,0);
+}
 $("#store").onchange=renderItems;
 $("#date").onchange=renderItems;
 
@@ -234,6 +308,7 @@ function showResults(list){
   $("#inputView").classList.add("hidden");$("#resultView").classList.remove("hidden");
   $("#barInput").classList.add("hidden");$("#barResult").classList.remove("hidden");
   $("#search").classList.add("hidden");$("#chips").classList.add("hidden");$("#prog").classList.add("hidden");
+  $("#fab").classList.add("hidden");$("#expStock").classList.add("hidden");
 
   // 발주 필요한 것만, 발주처별 그룹
   const need=list.filter(r=>r.status==="MANUAL"||r.order_qty>0);
@@ -265,6 +340,7 @@ $("#backBtn").onclick=()=>{
   $("#resultView").classList.add("hidden");$("#inputView").classList.remove("hidden");
   $("#barResult").classList.add("hidden");$("#barInput").classList.remove("hidden");
   $("#search").classList.remove("hidden");$("#chips").classList.remove("hidden");$("#prog").classList.remove("hidden");
+  $("#fab").classList.remove("hidden");$("#expStock").classList.remove("hidden");
   window.scrollTo(0,0);
 };
 
@@ -294,6 +370,77 @@ $("#loadOrder").onclick=async()=>{
     $("#orderBtn").textContent="발주 수정 저장";
     toast("저장된 발주를 불러왔어요");
   }catch(e){toast("불러오기 실패",1);}
+};
+
+/* ── 새 품목 등록 ── */
+$("#fab").onclick=()=>{
+  const ps=[...new Set(items.map(i=>i.part||"기타"))];
+  $("#nPart").innerHTML=ps.map(p=>`<option>${p}</option>`).join("");
+  $("#modalbg").classList.remove("hidden");
+};
+$("#nCancel").onclick=()=>$("#modalbg").classList.add("hidden");
+$("#modalbg").onclick=e=>{if(e.target.id==="modalbg")$("#modalbg").classList.add("hidden");};
+$("#nSave").onclick=async()=>{
+  const name=$("#nItem").value.trim();
+  if(!name){toast("품명을 입력해주세요",1);return;}
+  const btn=$("#nSave");btn.disabled=true;btn.textContent="등록 중…";
+  const base={name, part:$("#nPart").value, supplier:$("#nSup").value.trim(),
+    location:$("#nLoc").value.trim(), stock_unit:$("#nSU").value.trim()||"ea",
+    order_unit:$("#nOU").value.trim()||$("#nSU").value.trim()||"ea"};
+  const maxId=Math.max(0,...items.map(i=>+i.item_id||0));
+  const tries=[
+    {...base, storage:$("#nStorage").value},
+    {...base, zone:$("#nStorage").value},
+    {...base, storage:$("#nStorage").value, item_id:maxId+1},
+    {...base, zone:$("#nStorage").value, item_id:maxId+1}
+  ];
+  let ok=false, lastErr="";
+  for(const body of tries){
+    const r=await sbFetch("/items",{method:"POST",headers:{Prefer:"return=minimal"},
+      body:JSON.stringify(body)});
+    if(r.ok){ok=true;break;}
+    lastErr=await r.text();
+  }
+  btn.disabled=false;btn.textContent="등록";
+  if(!ok){toast("등록 실패 — 권한(RLS) 설정 필요할 수 있어요",1);console.error(lastErr);return;}
+  $("#modalbg").classList.add("hidden");
+  ["nItem","nSup","nLoc","nSU","nOU"].forEach(id=>$("#"+id).value="");
+  toast(`"${name}" 등록 완료`);
+  try{
+    autosave();
+    items=await fetch(API+"/items").then(r=>r.json());
+    items.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
+    buildChips(); renderItems();
+  }catch(e){}
+};
+
+/* ── 엑셀(CSV) 내보내기 ── */
+function dlCSV(name,rows){
+  const csv="\uFEFF"+rows.map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\r\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download=name;a.click();URL.revokeObjectURL(a.href);
+}
+$("#expStock").onclick=()=>{
+  const rows=[["날짜","파트","품명","전일재고","오늘재고","단위","발주검토"]];
+  document.querySelectorAll(".card").forEach(c=>{
+    const id=c.dataset.id;
+    const it=items.find(i=>i.item_id==id)||{};
+    const v=c.querySelector(".qty").value.trim();
+    const so=c.querySelector('input[type=checkbox]').checked;
+    rows.push([$("#date").value, it.part||"", it.name||c.dataset.name,
+      prevMap[id]??"", so?"0":v, it.stock_unit||"", so?"O":""]);
+  });
+  dlCSV(`재고내역_${$("#date").value}.csv`,rows);
+  toast("재고내역 파일을 저장했어요");
+};
+$("#expOrder").onclick=()=>{
+  const els=[...document.querySelectorAll(".oqty")];
+  if(!els.length){toast("발주 목록이 없어요",1);return;}
+  const rows=[["날짜","발주처","품명","발주수량","단위"]];
+  els.forEach(el=>rows.push([$("#date").value, el.dataset.sup, el.dataset.name, el.value, el.dataset.unit]));
+  dlCSV(`발주내역_${$("#date").value}.csv`,rows);
+  toast("발주내역 파일을 저장했어요");
 };
 
 init();
