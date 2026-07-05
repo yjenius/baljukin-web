@@ -123,7 +123,7 @@ window.sbToken=session?.access_token||null;
   </div>
   <div class="inner hidden" id="barResult">
     <button class="btn ghost" id="backBtn">재고 수정</button>
-    <button class="btn ghost" id="expOrder">엑셀</button>
+    <button class="btn ghost" id="expOrder">공유</button>
     <button class="btn" id="orderBtn">발주하기</button>
   </div>
 </div>
@@ -505,13 +505,16 @@ $("#expStock").onclick=()=>{
   dlCSV(`재고내역_${$("#date").value}.csv`,rows);
   toast("재고내역 파일을 저장했어요");
 };
-$("#expOrder").onclick=()=>{
-  const els=[...document.querySelectorAll(".oqty")];
-  if(!els.length){toast("발주 목록이 없어요",1);return;}
-  const rows=[["날짜","발주처","품명","발주수량","단위"]];
-  els.forEach(el=>rows.push([$("#date").value, el.dataset.sup, el.dataset.name, el.value, el.dataset.unit]));
-  dlCSV(`발주내역_${$("#date").value}.csv`,rows);
-  toast("발주내역 파일을 저장했어요");
+$("#expOrder").onclick=async()=>{
+  const els=[...document.querySelectorAll(".oqty")].filter(el=>parseFloat(el.value)>0);
+  if(!els.length){toast("발주 수량이 없어요",1);return;}
+  const g={};
+  els.forEach(el=>(g[el.dataset.sup]=g[el.dataset.sup]||[]).push(`- ${el.dataset.name} ${el.value}${el.dataset.unit||""}`));
+  const txt=`[발주] ${$("#date").value}\n\n`+Object.entries(g)
+    .map(([s,l])=>`■ ${s}\n${l.join("\n")}`).join("\n\n");
+  if(navigator.share){try{await navigator.share({text:txt});return;}catch(e){}}
+  await navigator.clipboard.writeText(txt);
+  toast("발주 내용을 복사했어요 — 카톡 등에 붙여넣기");
 };
 
 init();
