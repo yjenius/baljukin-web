@@ -105,7 +105,7 @@ window.sbToken=session?.access_token||null;
 
 <header>
   <div class="brand"><b>발주왕</b><span id="viewLabel">마감 재고 입력</span>
-    <a href="index.html" style="color:#9fb3a6;font-size:13px;text-decoration:none;margin-left:auto;margin-right:10px">🏠 메인</a><span class="link" id="loadOrder" style="margin-left:0;margin-right:10px">오늘 발주 불러오기</span><span class="link" id="expStock" style="margin-left:0">재고 엑셀</span></div>
+    <a href="index.html" style="color:#9fb3a6;font-size:13px;text-decoration:none;margin-left:auto;margin-right:10px">🏠 메인</a><span class="link" id="loadOrder" style="margin-left:0;margin-right:10px">오늘 발주 불러오기</span><span class="link" id="expStock" style="margin-left:0">재고 공유</span></div>
   <div class="ctrls">
     <select id="store" style="display:none"></select>
     <input class="dateinput" type="date" id="date" style="flex:1">
@@ -534,18 +534,22 @@ function dlCSV(name,rows){
   a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
   a.download=name;a.click();URL.revokeObjectURL(a.href);
 }
-$("#expStock").onclick=()=>{
-  const rows=[["날짜","파트","품명","전일재고","오늘재고","단위","발주검토"]];
+$("#expStock").onclick=async()=>{
+  const g={};
   document.querySelectorAll(".card").forEach(c=>{
-    const id=c.dataset.id;
-    const it=items.find(i=>i.item_id==id)||{};
     const v=c.querySelector(".qty").value.trim();
     const so=c.querySelector('input[type=checkbox]').checked;
-    rows.push([$("#date").value, it.part||"", it.name||c.dataset.name,
-      prevMap[id]??"", so?"0":v, it.stock_unit||"", so?"O":""]);
+    if(v===""&&!so)return;
+    const it=items.find(i=>i.item_id==c.dataset.id)||{};
+    const line=`- ${it.name||c.dataset.name} ${so?"0(발주검토)":v+(it.stock_unit||"")}`;
+    (g[it.part||"기타"]=g[it.part||"기타"]||[]).push(line);
   });
-  dlCSV(`재고내역_${$("#date").value}.csv`,rows);
-  toast("재고내역 파일을 저장했어요");
+  if(!Object.keys(g).length){toast("입력된 재고가 없어요",1);return;}
+  const txt=`[재고조사] ${$("#date").value}\n\n`+Object.entries(g)
+    .map(([p,l])=>`■ ${p}\n${l.join("\n")}`).join("\n\n");
+  if(navigator.share){try{await navigator.share({text:txt});return;}catch(e){}}
+  await navigator.clipboard.writeText(txt);
+  toast("재고 내용을 복사했어요 — 카톡 등에 붙여넣기");
 };
 $("#expOrder").onclick=async()=>{
   const els=[...document.querySelectorAll(".oqty")].filter(el=>parseFloat(el.value)>0);
