@@ -80,6 +80,7 @@ window.sbAuth=sbA;
       <button class="btn" id="addBtn">+ 품목 추가</button>
       <button class="btn ghost" id="csvBtn">엑셀(CSV) 대량 등록</button>
     </div>
+    <input id="search" placeholder="🔍 품목·파트·발주처 검색" autocomplete="off" style="margin-bottom:12px">
     <div style="overflow-x:auto">
       <table id="tbl"><tbody><tr><td class="hint">불러오는 중…</td></tr></tbody></table>
     </div>
@@ -181,8 +182,11 @@ async function load(){
 }
 function render(){
   if(!items.length){$("#tbl").innerHTML="<tbody><tr><td class='hint'>아직 품목이 없어요. ‘품목 추가’ 또는 ‘대량 등록’으로 시작하세요.</td></tr></tbody>";return;}
+  const kw=$("#search").value.trim().toLowerCase();
+  const list=kw?items.filter(i=>[i.name,i.part,i.supplier].some(v=>(v||"").toLowerCase().includes(kw))):items;
+  if(!list.length){$("#tbl").innerHTML="<tbody><tr><td class='hint'>검색 결과가 없어요.</td></tr></tbody>";return;}
   const head="<thead><tr><th>품목</th><th>파트</th><th>보관</th><th>위치</th><th>발주처</th><th>규격</th><th>발주</th><th>박스당</th><th>MOQ</th><th>배송</th><th>주기</th><th></th></tr></thead>";
-  const body=items.map(i=>`<tr>
+  const body=list.map(i=>`<tr>
     <td><span class="nm">${i.name}</span></td>
     <td>${i.part||"-"}</td><td>${i.storage?`<span class="badge">${i.storage}</span>`:"-"}</td>
     <td>${i.location||"-"}</td><td>${i.supplier||"-"}</td>
@@ -304,6 +308,8 @@ $("#uploadBtn").onclick=async()=>{
   }catch(e){toast("업로드 실패 — 품명·규격 빈칸 없는지 확인",1);}
   finally{$("#uploadBtn").textContent="등록하기";}
 };
+
+$("#search").oninput=render;
 
 load();
 </script>
