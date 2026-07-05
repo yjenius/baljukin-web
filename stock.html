@@ -218,7 +218,24 @@ function renderItems(){
     if(so.checked)c.classList.add("out");
     if(qty.value.trim()!=="")c.classList.add("filled");
   });
-  applyFilter(); updProg(); loadPrev();
+  applyFilter(); updProg(); loadPrev(); loadShared();
+}
+
+/* 다른 폰에서 저장한 재고 불러오기 */
+async function loadShared(){
+  try{
+    const r=await sbFetch(`/stock_draft?store_id=eq.${$("#store").value}&date=eq.${$("#date").value}&select=item_id,qty,so`);
+    if(!r.ok)return;
+    (await r.json()).forEach(row=>{
+      const c=document.querySelector(`.card[data-id="${row.item_id}"]`);
+      if(!c)return;
+      const qty=c.querySelector(".qty"), so=c.querySelector('input[type=checkbox]');
+      if(qty.value.trim()==="")qty.value=row.qty??"";
+      if(row.so){so.checked=true;c.classList.add("out");}
+      c.classList.toggle("filled",qty.value.trim()!==""||so.checked);
+    });
+    updProg();
+  }catch(e){}
 }
 
 /* ── 전일 재고 표시 (Supabase 직접 조회) ── */
@@ -277,7 +294,19 @@ function autosave(){
   localStorage.setItem(draftKey(),JSON.stringify(d));
 }
 
-$("#tempBtn").onclick=()=>{autosave();sortUnfilled();toast("임시저장 완료 · 미입력 품목을 위로 올렸어요");};
+$("#tempBtn").onclick=async()=>{
+  autosave();
+  const lines=collect().filter(x=>x.qty!==""||x.so).map(x=>({
+    store_id:+$("#store").value, date:$("#date").value, item_id:x.item_id,
+    qty:x.qty===""?0:parseFloat(x.qty), so:x.so}));
+  if(!lines.length){toast("입력된 항목이 없어요",1);return;}
+  const btn=$("#tempBtn");btn.disabled=true;
+  const r=await sbFetch("/stock_draft?on_conflict=store_id,date,item_id",
+    {method:"POST",headers:{Prefer:"resolution=merge-duplicates"},body:JSON.stringify(lines)});
+  btn.disabled=false;
+  if(r.ok){sortUnfilled();toast(`서버 저장 완료 ${lines.length}건 · 다른 폰에서도 보여요`);}
+  else toast("저장 실패 — SQL 실행했는지 확인",1);
+};
 function sortUnfilled(){
   const wrap=$("#items");
   [...wrap.querySelectorAll(".card")]
