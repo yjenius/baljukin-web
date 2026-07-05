@@ -267,6 +267,16 @@ async function loadPrev(){
 
 function applyFilter(){
   const kw=$("#search").value.trim().toLowerCase();
+  if(!$("#resultView").classList.contains("hidden")){
+    document.querySelectorAll("#results .slip").forEach(s=>
+      s.style.display=(!kw||(s.dataset.name||"").toLowerCase().includes(kw))?"":"none");
+    document.querySelectorAll("#results .grp").forEach(g=>{
+      let el=g.nextElementSibling,any=false;
+      while(el&&!el.classList.contains("grp")){if(el.style.display!=="none")any=true;el=el.nextElementSibling;}
+      g.style.display=any?"":"none";
+    });
+    return;
+  }
   document.querySelectorAll(".card").forEach(c=>{
     const okP=filterPart==="전체"||c.dataset.p===filterPart;
     const okK=!kw||c.dataset.name.toLowerCase().includes(kw);
@@ -337,7 +347,8 @@ function showResults(list){
   $("#viewLabel").textContent="발주 확인";
   $("#inputView").classList.add("hidden");$("#resultView").classList.remove("hidden");
   $("#barInput").classList.add("hidden");$("#barResult").classList.remove("hidden");
-  $("#search").classList.add("hidden");$("#chips").classList.add("hidden");$("#prog").classList.add("hidden");
+  $("#chips").classList.add("hidden");$("#prog").classList.add("hidden");
+  $("#search").value="";
   $("#fab").classList.add("hidden");$("#expStock").classList.add("hidden");
 
   // 발주 필요한 것만, 발주처별 그룹
@@ -350,7 +361,7 @@ function showResults(list){
     const body=rows.map(r=>{
       const manual=r.status==="MANUAL";
       const q=manual?0:r.order_qty;
-      return `<div class="slip">
+      return `<div class="slip" data-name="${r.item_name}">
         <div><div class="nm">${r.item_name}</div>
           <div class="sub">잔여 ${r.today_stock} ${r.stock_unit}${manual?" · 데이터 부족(직접 입력)":""}</div></div>
         <div style="display:flex;align-items:center;gap:6px">
@@ -370,6 +381,7 @@ $("#backBtn").onclick=()=>{
   $("#resultView").classList.add("hidden");$("#inputView").classList.remove("hidden");
   $("#barResult").classList.add("hidden");$("#barInput").classList.remove("hidden");
   $("#search").classList.remove("hidden");$("#chips").classList.remove("hidden");$("#prog").classList.remove("hidden");
+  $("#search").value="";applyFilter();
   $("#fab").classList.remove("hidden");$("#expStock").classList.remove("hidden");
   window.scrollTo(0,0);
 };
