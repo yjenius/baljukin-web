@@ -168,7 +168,7 @@ window.sbToken=session?.access_token||null;
 <script>
 const API="https://baljuking.onrender.com";
 const $=s=>document.querySelector(s);
-let items=[], filterPart="전체", lastResults=[];
+let items=[], filterPart="전체", lastResults=[], reviewIds=new Set();
 
 function toast(t,err){const e=$("#toast");e.textContent=t;e.className="toast show"+(err?" err":"");
   clearTimeout(e._t);e._t=setTimeout(()=>e.className="toast",2400);}
@@ -215,7 +215,7 @@ function renderItems(){
         <span class="u">${i.stock_unit}</span>
       </div>
       <div class="stockout"><input type="checkbox" id="so${i.item_id}" ${d.so?"checked":""}>
-        <label for="so${i.item_id}">발주 검토(재고 없음)</label></div>
+        <label for="so${i.item_id}">발주 검토</label></div>
     </div>`;
   }).join("");
 
@@ -224,7 +224,7 @@ function renderItems(){
     const upd=()=>{if(qty.value.startsWith("."))qty.value="0"+qty.value;
       c.classList.toggle("filled",qty.value.trim()!==""||so.checked);autosave();updProg();};
     qty.addEventListener("input",upd);
-    so.addEventListener("change",()=>{if(so.checked)qty.value="0";c.classList.toggle("out",so.checked);upd();});
+    so.addEventListener("change",()=>{c.classList.toggle("out",so.checked);upd();});
     if(so.checked)c.classList.add("out");
     if(qty.value.trim()!=="")c.classList.add("filled");
   });
@@ -362,9 +362,10 @@ $("#calcBtn").onclick=async()=>{
   autosave();
   const lines=collect().map(x=>({
     item_id:x.item_id,
-    stock_qty: x.so?0:(x.qty===""?null:parseFloat(x.qty)),
+    stock_qty: x.qty===""?null:parseFloat(x.qty),
     is_stockout:x.so
   }));
+  reviewIds=new Set(collect().filter(x=>x.so).map(x=>x.item_id));
   try{
     const res=await fetch(API+"/stock-submit",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({store_id:+$("#store").value,date:$("#date").value,lines})}).then(r=>r.json());
@@ -382,7 +383,7 @@ function showResults(list){
   $("#fab").classList.add("hidden");$("#expStock").classList.add("hidden");
 
   // 발주 필요한 것만, 발주처별 그룹
-  const need=list.filter(r=>r.status==="MANUAL"||r.order_qty>0);
+  const need=list.filter(r=>r.status==="MANUAL"||r.order_qty>0||reviewIds.has(r.item_id));
   if(!need.length){$("#results").innerHTML="<div class='msg'>지금 발주할 품목이 없어요. 재고가 충분합니다 👍</div>";
     $("#chips").classList.add("hidden");window.scrollTo(0,0);return;}
   const ov=JSON.parse(localStorage.getItem(supKey())||"{}");
@@ -396,7 +397,7 @@ function showResults(list){
         <div><div class="nm">${r.item_name}</div>
           <div class="sub">잔여 ${r.today_stock} ${r.stock_unit}${manual?" · 데이터 부족(직접 입력)":""}</div></div>
         <div style="display:flex;align-items:center;gap:6px">
-          ${manual?'<span class="badge manual">수동</span>':""}
+          ${manual?'<span class="badge manual">수동</span>':""}${reviewIds.has(r.item_id)?'<span class="badge manual">검토</span>':""}
           <button class="supbtn" data-id="${r.item_id}">거래처↔</button>
           <input class="oqty num" data-id="${r.item_id}" data-sup="${sup}" data-name="${r.item_name}"
             data-unit="${r.order_unit}" inputmode="decimal" value="${q}">
