@@ -120,7 +120,7 @@ window.sbToken=session?.access_token||null;
 
 <div class="bar">
   <div class="inner" id="barInput">
-    <button class="btn ghost" id="tempBtn">임시저장</button>
+    <button class="btn ghost" id="tempBtn">저장</button>
     <button class="btn" id="calcBtn">발주 계산하기</button>
   </div>
   <div class="inner hidden" id="barResult">
@@ -221,7 +221,8 @@ function renderItems(){
 
   $("#items").querySelectorAll(".card").forEach(c=>{
     const qty=c.querySelector(".qty"), so=c.querySelector('input[type=checkbox]');
-    const upd=()=>{c.classList.toggle("filled",qty.value.trim()!==""||so.checked);autosave();updProg();};
+    const upd=()=>{if(qty.value.startsWith("."))qty.value="0"+qty.value;
+      c.classList.toggle("filled",qty.value.trim()!==""||so.checked);autosave();updProg();};
     qty.addEventListener("input",upd);
     so.addEventListener("change",()=>{if(so.checked)qty.value="0";c.classList.toggle("out",so.checked);upd();});
     if(so.checked)c.classList.add("out");
