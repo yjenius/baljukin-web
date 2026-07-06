@@ -208,10 +208,9 @@ function renderItems(){
     return `<div class="card" data-id="${i.item_id}" data-name="${i.name}" data-p="${pt}">
       <div>
         <div class="name">${i.name}</div>
-        <div class="meta"><span class="tag">${pt}</span>${st?`<span>${st}</span>`:""}${i.location?`<span>위치 ${i.location}</span>`:""}</div>
+        <div class="meta"><span class="tag">${pt}</span>${st?`<span>${st}</span>`:""}${i.location?`<span>위치 ${i.location}</span>`:""}<span class="prev" data-prev="${i.item_id}"></span></div>
       </div>
       <div class="qtywrap">
-        <span class="prev" data-prev="${i.item_id}"></span>
         <input class="qty num" inputmode="decimal" placeholder="—" value="${d.qty??""}" aria-label="${i.name}">
         <span class="u">${i.stock_unit}</span>
       </div>
@@ -228,7 +227,7 @@ function renderItems(){
     if(so.checked)c.classList.add("out");
     if(qty.value.trim()!=="")c.classList.add("filled");
   });
-  applyFilter(); updProg(); loadPrev(); loadShared();
+  applyFilter(); updProg(); loadShared().then(loadPrev);
 }
 
 /* 다른 폰에서 저장한 재고 불러오기 */
@@ -276,9 +275,13 @@ async function loadPrev(){
       const q=prevMap[id], ib=inbMap[id];
       if(q==null&&ib==null){el.textContent="";return;}
       const total=(q||0)+(ib||0);
-      el.textContent=`전일 ${q??0}${ib?`+입고 ${ib}=${total}`:""}`;
+      el.textContent=`전일 ${q??0}${ib?` +입고 ${ib}`:""}`;
       if(ib)prevMap[id]=total;
+      const c=el.closest(".card"), qty=c.querySelector(".qty");
+      const so=c.querySelector('input[type=checkbox]');
+      if(qty.value.trim()===""&&!so.checked){qty.value=total;c.classList.add("filled");}
     });
+    updProg();
   }catch(e){}
 }
 
