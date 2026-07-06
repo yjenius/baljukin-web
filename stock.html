@@ -263,14 +263,21 @@ async function loadPrev(){
     const d=new Date($("#date").value+"T00:00:00");d.setDate(d.getDate()-1);
     const y=d.toISOString().slice(0,10);
     const r=await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=eq.${y}&select=*`);
+    const r2=await sbFetch(`/daily_inbound?store_id=eq.${$("#store").value}&date=eq.${$("#date").value}&select=item_id,inbound_qty`);
+    const inbMap={};
+    if(r2.ok)(await r2.json()).forEach(x=>inbMap[x.item_id]=x.inbound_qty);
     if(!r.ok)return;
     (await r.json()).forEach(row=>{
       const q=row.stock_qty??row.qty??row.closing_qty??row.closing_stock;
       if(q!=null)prevMap[row.item_id]=q;
     });
     document.querySelectorAll("[data-prev]").forEach(el=>{
-      const q=prevMap[el.dataset.prev];
-      el.textContent=q!=null?`전일 ${q}`:"";
+      const id=el.dataset.prev;
+      const q=prevMap[id], ib=inbMap[id];
+      if(q==null&&ib==null){el.textContent="";return;}
+      const total=(q||0)+(ib||0);
+      el.textContent=`전일 ${q??0}${ib?`+입고 ${ib}=${total}`:""}`;
+      if(ib)prevMap[id]=total;
     });
   }catch(e){}
 }
