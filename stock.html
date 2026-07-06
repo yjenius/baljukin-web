@@ -270,6 +270,11 @@ async function loadPrev(){
       const q=row.stock_qty??row.qty??row.closing_qty??row.closing_stock;
       if(q!=null)prevMap[row.item_id]=q;
     });
+    // 정식 재고 없으면 전일 임시저장분으로 대체
+    const r3=await sbFetch(`/stock_draft?store_id=eq.${$("#store").value}&date=eq.${y}&select=item_id,qty,so`);
+    if(r3.ok)(await r3.json()).forEach(row=>{
+      if(prevMap[row.item_id]==null)prevMap[row.item_id]=row.so?0:row.qty;
+    });
     document.querySelectorAll("[data-prev]").forEach(el=>{
       const id=el.dataset.prev;
       const q=prevMap[id], ib=inbMap[id];
