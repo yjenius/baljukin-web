@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>발주왕 · 월간 결산</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#12211c;--paper:#f6f4ec;--card:#fff;--green:#1f7a4d;--green-d:#155f3b;
+    --line:#dcd8cb;--muted:#6b7169;--shadow:0 1px 0 rgba(0,0,0,.04),0 8px 24px -18px rgba(18,33,28,.45)}
+  *{box-sizing:border-box}html,body{margin:0}
+  body{background:var(--paper);color:var(--ink);font-family:"Noto Sans KR",system-ui,sans-serif;padding-bottom:40px}
+  header{position:sticky;top:0;z-index:20;background:var(--ink);color:#eef2ec;padding:12px 14px;box-shadow:var(--shadow)}
+  .brand{display:flex;align-items:baseline;gap:8px}
+  .brand b{font-family:"Archivo";font-weight:800;font-size:19px}
+  .brand span{font-size:12px;color:#9fb3a6}
+  .brand a{color:#9fb3a6;font-size:13px;text-decoration:none;margin-left:auto}
+  main{max-width:680px;margin:0 auto;padding:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:var(--shadow)}
+  input[type=month],select{width:100%;border:1px solid var(--line);border-radius:11px;padding:12px;font-size:16px;font-family:inherit;background:#fbfaf5}
+  .row{display:flex;gap:8px;margin-top:10px}
+  .btn{flex:1;border:none;border-radius:13px;padding:14px;font-family:"Archivo";font-weight:700;font-size:15px;background:var(--green);color:#fff;cursor:pointer;box-shadow:var(--shadow)}
+  .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .btn:disabled{background:#9fb0a6}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}
+  th{color:var(--muted);font-weight:700;font-size:12px}
+  td.n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+  .msg{text-align:center;color:var(--muted);padding:28px 12px}
+  .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);background:var(--ink);
+    color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;opacity:0;transition:.25s;z-index:40}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+const sbA=createClient("https://uisdezsmyknmwayexhbu.supabase.co","sb_publishable_18Z8F9WYbJkbmFGIumZdKA_f6YGy9po");
+const {data:{session}}=await sbA.auth.getSession();
+if(!session)location.href="index.html";
+window.sbToken=session?.access_token||null;
+</script>
+
+<header><div class="brand"><b>발주왕</b><span>월간 결산</span><a href="index.html">🏠 메인</a></div></header>
+
+<main>
+  <div class="card">
+    <select id="store" style="display:none"></select>
+    <input type="month" id="month">
+    <div class="row">
+      <button class="btn ghost" id="stockCsv">재고현황 엑셀</button>
+      <button class="btn ghost" id="orderCsv">발주현황 엑셀</button>
+    </div>
+    <div class="row">
+      <button class="btn" id="loadBtn">화면으로 보기</button>
+    </div>
+  </div>
+  <div class="card" id="out"><div class="msg">월을 선택하고 버튼을 눌러주세요</div></div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const API="https://baljuking.onrender.com";
+const SB="https://uisdezsmyknmwayexhbu.supabase.co/rest/v1";
+const SBKEY="sb_publishable_18Z8F9WYbJkbmFGIumZdKA_f6YGy9po";
+const $=s=>document.querySelector(s);
+let items={};
+
+function toast(t){const e=$("#toast");e.textContent=t;e.className="toast show";
+  clearTimeout(e._t);e._t=setTimeout(()=>e.className="toast",2200);}
+async function getToken(){for(let i=0;i<20;i++){if(window.sbToken)return window.sbToken;
+  await new Promise(r=>setTimeout(r,250));}return null;}
+async function sbFetch(p){const t=await getToken();
+  return fetch(SB+p,{headers:{apikey:SBKEY,Authorization:`Bearer ${t||SBKEY}`}});}
+function range(){
+  const [y,m]=$("#month").value.split("-").map(Number);
+  const last=new Date(y,m,0).getDate();
+  return [`${$("#month").value}-01`,`${$("#month").value}-${String(last).padStart(2,"0")}`];
+}
+function dlCSV(name,rows){
+  const csv="\uFEFF"+rows.map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\r\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download=name;a.click();URL.revokeObjectURL(a.href);
+}
+async function fetchStock(){
+  const [f,t]=range();
+  const r=await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=gte.${f}&date=lte.${t}&order=date,item_id&select=*`);
+  return r.ok?await r.json():[];
+}
+async function fetchOrders(){
+  const [f,t]=range();
+  const r=await sbFetch(`/orders?store_id=eq.${$("#store").value}&date=gte.${f}&date=lte.${t}&order=date,supplier&select=*`);
+  return r.ok?await r.json():[];
+}
+
+$("#stockCsv").onclick=async()=>{
+  const rows=await fetchStock();
+  if(!rows.length){toast("해당 월 재고 데이터가 없어요");return;}
+  const out=[["날짜","파트","품명","재고","단위","발주검토","자동채움"]];
+  rows.forEach(r=>{const it=items[r.item_id]||{};
+    out.push([r.date,it.part||"",it.name||r.item_id,r.stock_qty,it.stock_unit||"",
+      r.is_stockout?"O":"",r.is_carried?"O":""]);});
+  dlCSV(`재고현황_${$("#month").value}.csv`,out);
+};
+$("#orderCsv").onclick=async()=>{
+  const rows=await fetchOrders();
+  if(!rows.length){toast("해당 월 발주 데이터가 없어요");return;}
+  const out=[["날짜","거래처","품명","수량","단위"]];
+  rows.forEach(r=>out.push([r.date,r.supplier||"",r.item_name,r.order_qty,r.order_unit||""]));
+  dlCSV(`발주현황_${$("#month").value}.csv`,out);
+};
+$("#loadBtn").onclick=async()=>{
+  $("#out").innerHTML="<div class='msg'>불러오는 중…</div>";
+  const [st,od]=await Promise.all([fetchStock(),fetchOrders()]);
+  const sByDay={},oByDay={};
+  st.forEach(r=>sByDay[r.date]=(sByDay[r.date]||0)+1);
+  od.forEach(r=>oByDay[r.date]=(oByDay[r.date]||0)+1);
+  const days=[...new Set([...Object.keys(sByDay),...Object.keys(oByDay)])].sort();
+  if(!days.length){$("#out").innerHTML="<div class='msg'>해당 월 데이터가 없어요</div>";return;}
+  $("#out").innerHTML=`<table><thead><tr><th>날짜</th><th style="text-align:right">재고기록</th><th style="text-align:right">발주품목</th></tr></thead><tbody>`+
+    days.map(d=>`<tr><td>${d}</td><td class="n">${sByDay[d]||0}</td><td class="n">${oByDay[d]||0}</td></tr>`).join("")+
+    `</tbody></table><div class="msg" style="padding:14px 0 0">자세한 내용은 위 엑셀 버튼으로 받아보세요</div>`;
+};
+
+(async function init(){
+  const now=new Date();
+  $("#month").value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  try{
+    const [stores,its]=await Promise.all([
+      fetch(API+"/stores").then(r=>r.json()),
+      fetch(API+"/items").then(r=>r.json())]);
+    $("#store").innerHTML=stores.map(s=>`<option value="${s.store_id}">${s.name}</option>`).join("");
+    its.forEach(i=>items[i.item_id]=i);
+  }catch(e){toast("서버 연결 실패 — 잠시 뒤 새로고침");}
+})();
+</script>
+</body>
+</html>
