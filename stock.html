@@ -566,25 +566,17 @@ $("#nSave").onclick=async()=>{
   const name=$("#nItem").value.trim();
   if(!name){toast("품명을 입력해주세요",1);return;}
   const btn=$("#nSave");btn.disabled=true;btn.textContent="등록 중…";
-  const base={name, part:$("#nPart").value, supplier:$("#nSup").value.trim(),
-    location:$("#nLoc").value.trim(), stock_unit:$("#nSU").value.trim()||"ea",
-    order_unit:$("#nOU").value.trim()||$("#nSU").value.trim()||"ea"};
-  const maxId=Math.max(0,...items.map(i=>+i.item_id||0));
-  const tries=[
-    {...base, storage:$("#nStorage").value},
-    {...base, zone:$("#nStorage").value},
-    {...base, storage:$("#nStorage").value, item_id:maxId+1},
-    {...base, zone:$("#nStorage").value, item_id:maxId+1}
-  ];
   let ok=false, lastErr="";
-  for(const body of tries){
-    const r=await sbFetch("/items",{method:"POST",headers:{Prefer:"return=minimal"},
-      body:JSON.stringify(body)});
-    if(r.ok){ok=true;break;}
-    lastErr=await r.text();
-  }
+  try{
+    const r=await fetch(API+"/items",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({name, part:$("#nPart").value||null, supplier:$("#nSup").value.trim()||null,
+        location:$("#nLoc").value.trim()||null, storage:$("#nStorage").value||null,
+        stock_unit:$("#nSU").value.trim()||"ea",
+        order_unit:$("#nOU").value.trim()||$("#nSU").value.trim()||"ea"})});
+    ok=r.ok; if(!ok)lastErr=await r.text();
+  }catch(e){lastErr=String(e);}
   btn.disabled=false;btn.textContent="등록";
-  if(!ok){toast("등록 실패 — 권한(RLS) 설정 필요할 수 있어요",1);console.error(lastErr);return;}
+  if(!ok){toast("등록 실패 — 잠시 뒤 다시",1);console.error(lastErr);return;}
   $("#modalbg").classList.add("hidden");
   ["nItem","nSup","nLoc","nSU","nOU"].forEach(id=>$("#"+id).value="");
   toast(`"${name}" 등록 완료`);
