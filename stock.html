@@ -511,7 +511,7 @@ $("#orderBtn").onclick=async()=>{
 // 장바구니 보기
 $("#cartBtn").onclick=async()=>{
   try{
-    const rows=await fetch(`${API}/orders?store_id=${$("#store").value}&on=${$("#date").value}`).then(r=>r.json());
+    const rows=(await fetch(`${API}/orders?store_id=${$("#store").value}&on=${$("#date").value}`).then(r=>r.json())).filter(r=>r.order_qty>0);
     if(!rows.length){toast("장바구니가 비었어요 — 먼저 담기를 눌러주세요",1);return;}
     const g={};
     rows.forEach(r=>(g[r.supplier||"미지정"]=g[r.supplier||"미지정"]||[]).push(r));
