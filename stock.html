@@ -407,7 +407,7 @@ function showResults(list){
       const q=manual?0:r.order_qty;
       return `<div class="slip" data-name="${r.item_name}" data-sup="${sup}">
         <div><div class="nm">${r.item_name}</div>
-          <div class="sub">잔여 ${r.today_stock} ${r.stock_unit}${manual?" · 데이터 부족(직접 입력)":""}</div></div>
+          <div class="sub">잔여 ${r.today_stock} ${r.stock_unit}${manual?" · 데이터 부족(직접 입력)":(r.avg_consumption!=null?` · 일평균 ${r.avg_consumption} × ${r.cover_days}일치 추천`:"")}</div></div>
         <div style="display:flex;align-items:center;gap:6px">
           ${manual?'<span class="badge manual">수동</span>':""}${reviewIds.has(r.item_id)?'<span class="badge manual">검토</span>':""}
           <button class="supbtn" data-id="${r.item_id}">거래처↔</button>
@@ -498,7 +498,7 @@ $("#orderBtn").onclick=async()=>{
   const lines=[...document.querySelectorAll(".oqty")].map(el=>({
     item_id:+el.dataset.id, item_name:el.dataset.name, supplier:el.dataset.sup,
     order_qty:parseFloat(el.value)||0, order_unit:el.dataset.unit
-  })).filter(l=>l.order_qty>0);
+  })).filter(l=>!isNaN(l.order_qty));
   try{
     const r=await fetch(API+"/orders/save",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({store_id:+$("#store").value,date:$("#date").value,lines})}).then(r=>r.json());
