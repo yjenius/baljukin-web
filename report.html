@@ -97,10 +97,16 @@ async function fetchOrders(){
 $("#stockCsv").onclick=async()=>{
   const rows=await fetchStock();
   if(!rows.length){toast("해당 월 재고 데이터가 없어요");return;}
-  const out=[["날짜","파트","품명","재고","단위","발주검토","자동채움"]];
-  rows.forEach(r=>{const it=items[r.item_id]||{};
-    out.push([r.date,it.part||"",it.name||r.item_id,r.stock_qty,it.stock_unit||"",
-      r.is_stockout?"O":"",r.is_carried?"O":""]);});
+  const dates=[...new Set(rows.map(r=>r.date))].sort();
+  const byItem={};
+  rows.forEach(r=>{(byItem[r.item_id]=byItem[r.item_id]||{})[r.date]=r.stock_qty;});
+  const out=[["파트","품명","단위",...dates.map(d=>d.slice(5))]];
+  Object.keys(byItem)
+    .sort((a,b)=>((items[a]||{}).location||9999)-((items[b]||{}).location||9999))
+    .forEach(id=>{
+      const it=items[id]||{};
+      out.push([it.part||"",it.name||id,it.stock_unit||"",...dates.map(d=>byItem[id][d]??"")]);
+    });
   dlCSV(`재고현황_${$("#month").value}.csv`,out);
 };
 $("#orderCsv").onclick=async()=>{
