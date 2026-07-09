@@ -239,7 +239,7 @@ function renderItems(){
     if(so.checked)c.classList.add("out");
     if(qty.value.trim()!=="")c.classList.add("filled");
   });
-  applyFilter(); updProg(); loadShared().then(loadPrev);
+  applyFilter(); updProg(); loadPrev().then(loadShared);
 }
 
 /* 다른 폰에서 저장한 재고 불러오기 */
@@ -251,7 +251,9 @@ async function loadShared(){
       const c=document.querySelector(`.card[data-id="${row.item_id}"]`);
       if(!c)return;
       const qty=c.querySelector(".qty"), so=c.querySelector('input[type=checkbox]');
-      if(qty.value.trim()==="")qty.value=row.qty??"";
+      // 저장된 값이 자동채움(전일+입고)과 다르면 사람이 입력한 것 → 반영
+      const auto=prevMap[row.item_id];
+      if(row.qty!=null && +row.qty!==+auto) qty.value=row.qty;
       if(row.so){so.checked=true;c.classList.add("out");}
       c.classList.toggle("filled",qty.value.trim()!==""||so.checked);
     });
