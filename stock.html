@@ -115,6 +115,10 @@ window.sbToken=session?.access_token||null;
     <input class="dateinput" type="date" id="date" style="flex:1">
   </div>
   <input class="search" id="search" placeholder="🔍 품목 검색" autocomplete="off">
+  <div style="display:flex;gap:6px;margin-top:8px">
+    <button class="chip on" id="byPart" style="cursor:pointer">파트별</button>
+    <button class="chip" id="bySup" style="cursor:pointer">발주처별</button>
+  </div>
   <div class="chips" id="chips"></div>
   <div class="prog" id="prog"></div>
 </header>
@@ -199,8 +203,10 @@ async function init(){
   }catch(e){ $("#items").innerHTML="서버에 연결하지 못했어요.<br>무료 서버는 첫 접속 시 최대 1분 걸려요. 잠시 뒤 새로고침 해주세요."; }
 }
 
+let chipMode="part";  // part | supplier
+function chipVal(i){return chipMode==="part"?(i.part||"기타"):((i.supplier||"미지정").toUpperCase());}
 function buildChips(){
-  const ps=["전체",...[...new Set(items.map(i=>i.part||"기타"))]];
+  const ps=["전체",...[...new Set(items.map(chipVal))]];
   $("#chips").innerHTML=ps.map(p=>`<div class="chip${p==="전체"?" on":""}" data-p="${p}">${p}</div>`).join("");
   $("#chips").querySelectorAll(".chip").forEach(c=>c.onclick=()=>{
     filterPart=c.dataset.p;
@@ -208,6 +214,10 @@ function buildChips(){
     applyFilter();
   });
 }
+$("#byPart").onclick=()=>{chipMode="part";filterPart="전체";
+  $("#byPart").classList.add("on");$("#bySup").classList.remove("on");buildChips();applyFilter();};
+$("#bySup").onclick=()=>{chipMode="supplier";filterPart="전체";
+  $("#bySup").classList.add("on");$("#byPart").classList.remove("on");buildChips();applyFilter();};
 
 function renderItems(){
   const draft=JSON.parse(localStorage.getItem(draftKey())||"{}");
@@ -216,7 +226,7 @@ function renderItems(){
     const d=draft[i.item_id]||{};
     const st=i.storage||i.zone||"기타";
     const pt=i.part||"기타";
-    return `<div class="card" data-id="${i.item_id}" data-name="${i.name}" data-p="${pt}">
+    return `<div class="card" data-id="${i.item_id}" data-name="${i.name}" data-p="${pt}" data-sup="${(i.supplier||'미지정').toUpperCase()}">
       <div>
         <div class="name">${i.name}</div>
         <div class="meta"><span class="tag">${pt}</span>${st?`<span>${st}</span>`:""}${i.location?`<span>위치 ${i.location}</span>`:""}<span class="prev" data-prev="${i.item_id}"></span></div>
@@ -321,7 +331,8 @@ function applyFilter(){
     return;
   }
   document.querySelectorAll(".card").forEach(c=>{
-    const okP=filterPart==="전체"||c.dataset.p===filterPart;
+    const val=chipMode==="part"?c.dataset.p:c.dataset.sup;
+    const okP=filterPart==="전체"||val===filterPart;
     const okK=!kw||c.dataset.name.toLowerCase().includes(kw);
     c.style.display=(okP&&okK)?"":"none";
   });
