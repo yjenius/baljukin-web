@@ -103,13 +103,19 @@ if(!session)location.href="index.html";
 <script>
 const API="https://baljuking.onrender.com", STORE=1;
 const $=s=>document.querySelector(s);
-const stKo=s=>({sent:"담김",confirmed:"주문완료",updated:"수정완료"}[s]||s||"담김");
-let items=[], filterSup="전체", orderMap={}, view="pick";
+const stKo=s=>({sent:"주문완료",confirmed:"주문완료",updated:"수정완료","담김":"주문완료"}[s]||s||"주문완료");
+let items=[], filterSup="전체", orderMap={}, recMap={}, view="pick";
 
 function toast(t,e){const el=$("#toast");el.textContent=t;el.className="toast show"+(e?" err":"");
   clearTimeout(el._t);el._t=setTimeout(()=>el.className="toast",2400);}
 function today(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
 
+async function fetchRecs(){
+  try{
+    const rows=await fetch(`${API}/recommendations?store_id=${STORE}&on=${$("#date").value}`).then(r=>r.json());
+    recMap={};rows.forEach(r=>recMap[r.item_id]=r.order_qty);
+  }catch(e){recMap={};}
+}
 async function fetchOrders(){
   const rows=await fetch(`${API}/orders?store_id=${STORE}&on=${$("#date").value}`).then(r=>r.json());
   orderMap={};rows.filter(r=>r.order_qty>0).forEach(r=>orderMap[r.item_id]=r);
@@ -123,9 +129,10 @@ async function init(){
     items.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
     await fetchOrders();
     buildChips(); renderPick();
+    fetchRecs().then(renderPick);
   }catch(e){$("#items").innerHTML="<div class='msg'>서버 연결 실패 — 잠시 뒤 새로고침</div>";}
 }
-$("#date").onchange=async()=>{await fetchOrders();renderPick();};
+$("#date").onchange=async()=>{await fetchOrders();renderPick();fetchRecs().then(renderPick);};
 
 function buildChips(){
   const sups=["전체",...new Set(items.map(i=>(i.supplier||"미지정").toUpperCase()))];
@@ -150,7 +157,7 @@ function renderPick(){
     return `<div class="card${q>0?" picked":""}" data-id="${i.item_id}" data-name="${i.name}"
       data-sup="${(i.supplier||'미지정').toUpperCase()}" data-init="${q}">
       <div><div class="name">${i.name}</div>
-        <div class="meta"><span>${(i.supplier||'미지정').toUpperCase()}</span><span>${i.stock_unit}</span>${o?`<span class="badge${stKo(o.status)==="주문완료"?"":" warn"}">${stKo(o.status)}</span>`:""}</div></div>
+        <div class="meta"><span>${(i.supplier||'미지정').toUpperCase()}</span><span>${i.stock_unit}</span>${recMap[i.item_id]?`<span class="badge">추천 ${recMap[i.item_id]}</span>`:""}${o?`<span class="badge${stKo(o.status)==="주문완료"?"":" warn"}">${stKo(o.status)}</span>`:""}</div></div>
       <div class="qtywrap">
         <button class="step" data-d="-1">−</button>
         <input class="oqty num" inputmode="decimal" value="${q}">
@@ -180,7 +187,7 @@ $("#addBtn").onclick=async()=>{
     if(q===init)return;
     const it=items.find(i=>i.item_id==c.dataset.id);
     const prev=orderMap[c.dataset.id];
-    const st=q===0?null:(prev&&(prev.status==="주문완료"||prev.status==="수정완료")?"수정완료":"담김");
+    const st=q===0?null:(prev?"수정완료":"주문완료");
     lines.push({item_id:+c.dataset.id,item_name:it.name,supplier:(it.supplier||"미지정").toUpperCase(),
       order_qty:q,order_unit:it.order_unit||"EA",status:st});
   });
