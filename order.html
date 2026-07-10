@@ -103,6 +103,7 @@ if(!session)location.href="index.html";
 <script>
 const API="https://baljuking.onrender.com", STORE=1;
 const $=s=>document.querySelector(s);
+const stKo=s=>({sent:"담김",confirmed:"주문완료",updated:"수정완료"}[s]||s||"담김");
 let items=[], filterSup="전체", orderMap={}, view="pick";
 
 function toast(t,e){const el=$("#toast");el.textContent=t;el.className="toast show"+(e?" err":"");
@@ -149,7 +150,7 @@ function renderPick(){
     return `<div class="card${q>0?" picked":""}" data-id="${i.item_id}" data-name="${i.name}"
       data-sup="${(i.supplier||'미지정').toUpperCase()}" data-init="${q}">
       <div><div class="name">${i.name}</div>
-        <div class="meta"><span>${(i.supplier||'미지정').toUpperCase()}</span><span>${i.stock_unit}</span>${o?`<span class="badge${o.status==="주문완료"?"":" warn"}">${o.status||"담김"}</span>`:""}</div></div>
+        <div class="meta"><span>${(i.supplier||'미지정').toUpperCase()}</span><span>${i.stock_unit}</span>${o?`<span class="badge${stKo(o.status)==="주문완료"?"":" warn"}">${stKo(o.status)}</span>`:""}</div></div>
       <div class="qtywrap">
         <button class="step" data-d="-1">−</button>
         <input class="oqty num" inputmode="decimal" value="${q}">
@@ -207,7 +208,7 @@ function renderCart(){
       `<div class="grp"><span class="sup">📦 ${s}</span><span>${l.length}품목</span></div>`+
       l.map(r=>`<div class="card" data-id="${r.item_id}" data-name="${r.item_name}" data-sup="${r.supplier}">
         <div><div class="name">${r.item_name}</div>
-          <div class="meta"><span class="badge${r.status==="주문완료"?"":" warn"}">${r.status||"담김"}</span></div></div>
+          <div class="meta"><span class="badge${stKo(r.status)==="주문완료"?"":" warn"}">${stKo(r.status)}</span></div></div>
         <div class="qtywrap">
           <button class="step" data-d="-1">−</button>
           <input class="oqty num" data-unit="${r.order_unit||""}" inputmode="decimal" value="${r.order_qty}">
@@ -259,7 +260,7 @@ function renderHist(){
         <div><div class="name">${r.item_name}</div></div>
         <div class="qtywrap"><span class="num" style="font-weight:800;font-size:18px">${r.order_qty}</span>
           <span class="u">${r.order_unit||""}</span>
-          <span class="badge${r.status==="주문완료"?"":" warn"}">${r.status||"담김"}</span></div>
+          <span class="badge${stKo(r.status)==="주문완료"?"":" warn"}">${stKo(r.status)}</span></div>
       </div>`).join("")).join("");
 }
 $("#backBtn").onclick=()=>{renderPick();switchView("pick");};
