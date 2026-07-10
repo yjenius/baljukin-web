@@ -118,9 +118,18 @@ async function bumpDraft(deltas){
     const map=Object.fromEntries((await r.json()).map(x=>[x.item_id,x]));
     const ups=list.filter(d=>map[d.item_id]).map(d=>({store_id:STORE,date:$("#date").value,item_id:d.item_id,
       qty:(parseFloat(map[d.item_id].qty)||0)+d.delta, so:map[d.item_id].so||false}));
-    if(!ups.length)return;
-    await sbFetch("/stock_draft?on_conflict=store_id,date,item_id",
+    if(ups.length)await sbFetch("/stock_draft?on_conflict=store_id,date,item_id",
       {method:"POST",headers:{Prefer:"resolution=merge-duplicates"},body:JSON.stringify(ups)});
+    // 확정 재고(daily_stock)에도 반영 → 잔여 즉시 갱신
+    const r2=await sbFetch(`/daily_stock?store_id=eq.${STORE}&date=eq.${$("#date").value}&item_id=in.(${ids})&select=item_id,stock_qty`);
+    if(r2.ok){
+      const smap=Object.fromEntries((await r2.json()).map(x=>[x.item_id,x]));
+      for(const d of list){
+        if(!smap[d.item_id])continue;
+        await sbFetch(`/daily_stock?store_id=eq.${STORE}&date=eq.${$("#date").value}&item_id=eq.${d.item_id}`,
+          {method:"PATCH",body:JSON.stringify({stock_qty:(parseFloat(smap[d.item_id].stock_qty)||0)+d.delta})});
+      }
+    }
   }catch(e){}
 }
 const $=s=>document.querySelector(s);
