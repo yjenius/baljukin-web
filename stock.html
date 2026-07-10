@@ -178,6 +178,15 @@ window.sbToken=session?.access_token||null;
   </div>
 </div>
 
+<div class="modalbg hidden" id="histbg">
+  <div class="modal">
+    <h3 id="histTitle">재고 기록</h3>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">잘못 입력한 날을 고치고 저장하세요. 수정 후 "발주 계산하기"를 다시 누르면 평균에 반영돼요.</div>
+    <div id="histList"></div>
+    <div class="acts"><button class="btn ghost sm" id="histClose">닫기</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -241,6 +250,8 @@ function renderItems(){
   }).join("");
 
   $("#items").querySelectorAll(".card").forEach(c=>{
+    c.querySelector(".name").style.cursor="pointer";
+    c.querySelector(".name").onclick=()=>openHist(+c.dataset.id,c.dataset.name);
     const qty=c.querySelector(".qty"), so=c.querySelector('input[type=checkbox]');
     const upd=()=>{if(qty.value.startsWith("."))qty.value="0"+qty.value;
       c.classList.toggle("filled",qty.value.trim()!==""||so.checked);autosave();updProg();};
@@ -645,6 +656,37 @@ $("#expOrder").onclick=async()=>{
   await navigator.clipboard.writeText(txt);
   toast("발주 내용을 복사했어요 — 카톡 등에 붙여넣기");
 };
+
+/* ── 품목별 재고 기록 조회·수정 ── */
+async function openHist(id,name){
+  $("#histTitle").textContent=`${name} · 최근 재고 기록`;
+  $("#histList").innerHTML="불러오는 중…";
+  $("#histbg").classList.remove("hidden");
+  try{
+    const r=await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&item_id=eq.${id}&order=date.desc&limit=14&select=date,stock_qty,is_carried,is_stockout`);
+    const rows=r.ok?await r.json():[];
+    if(!rows.length){$("#histList").innerHTML="<div style='color:var(--muted);padding:12px 0'>기록이 없어요</div>";return;}
+    $("#histList").innerHTML=rows.map(x=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)">
+        <span style="flex:1;font-size:14px">${x.date}${x.is_carried?' <span style="font-size:11px;color:var(--muted)">(자동)</span>':""}${x.is_stockout?' <span style="font-size:11px;color:var(--warn)">검토</span>':""}</span>
+        <input class="hq num" data-d="${x.date}" inputmode="decimal" value="${x.stock_qty}"
+          style="width:70px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:8px">
+        <button class="btn sm" style="flex:0;padding:8px 12px;font-size:13px" data-d="${x.date}">저장</button>
+      </div>`).join("");
+    $("#histList").querySelectorAll("button").forEach(b=>b.onclick=async()=>{
+      const inp=$("#histList").querySelector(`.hq[data-d="${b.dataset.d}"]`);
+      const v=parseFloat(inp.value);
+      if(isNaN(v)){toast("숫자를 입력하세요",1);return;}
+      b.disabled=true;
+      const rr=await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&item_id=eq.${id}&date=eq.${b.dataset.d}`,
+        {method:"PATCH",body:JSON.stringify({stock_qty:v,is_carried:false})});
+      b.disabled=false;
+      toast(rr.ok?`${b.dataset.d} 재고를 ${v}(으)로 수정했어요`:"수정 실패",rr.ok?0:1);
+    });
+  }catch(e){$("#histList").innerHTML="불러오기 실패";}
+}
+$("#histClose").onclick=()=>$("#histbg").classList.add("hidden");
+$("#histbg").onclick=e=>{if(e.target.id==="histbg")$("#histbg").classList.add("hidden");};
 
 init();
 </script>
