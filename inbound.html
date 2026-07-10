@@ -61,6 +61,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 const sbA=createClient("https://uisdezsmyknmwayexhbu.supabase.co","sb_publishable_18Z8F9WYbJkbmFGIumZdKA_f6YGy9po");
 const {data:{session}}=await sbA.auth.getSession();
+window.sbToken=session?.access_token||null;
 if(!session)location.href="index.html";
 window.sbAuth=sbA;
 </script>
@@ -100,6 +101,28 @@ window.sbAuth=sbA;
 
 <script>
 const API="https://baljuking.onrender.com", STORE=1;
+const SB="https://uisdezsmyknmwayexhbu.supabase.co/rest/v1";
+const SBKEY="sb_publishable_18Z8F9WYbJkbmFGIumZdKA_f6YGy9po";
+async function getToken(){for(let i=0;i<20;i++){if(window.sbToken)return window.sbToken;
+  await new Promise(r=>setTimeout(r,250));}return null;}
+async function sbFetch(p,opt={}){const t=await getToken();
+  return fetch(SB+p,{...opt,headers:{apikey:SBKEY,Authorization:`Bearer ${t||SBKEY}`,
+    "Content-Type":"application/json",...(opt.headers||{})}});}
+async function bumpDraft(deltas){
+  const list=deltas.filter(d=>d.delta);
+  if(!list.length)return;
+  try{
+    const ids=list.map(d=>d.item_id).join(",");
+    const r=await sbFetch(`/stock_draft?store_id=eq.${STORE}&date=eq.${$("#date").value}&item_id=in.(${ids})&select=item_id,qty,so`);
+    if(!r.ok)return;
+    const map=Object.fromEntries((await r.json()).map(x=>[x.item_id,x]));
+    const ups=list.filter(d=>map[d.item_id]).map(d=>({store_id:STORE,date:$("#date").value,item_id:d.item_id,
+      qty:(parseFloat(map[d.item_id].qty)||0)+d.delta, so:map[d.item_id].so||false}));
+    if(!ups.length)return;
+    await sbFetch("/stock_draft?on_conflict=store_id,date,item_id",
+      {method:"POST",headers:{Prefer:"resolution=merge-duplicates"},body:JSON.stringify(ups)});
+  }catch(e){}
+}
 const $=s=>document.querySelector(s);
 let items=[],filterSup="전체",savedMap=new Map(),itemsAll=[];
 
@@ -200,7 +223,8 @@ $("#saveBtn").onclick=async()=>{
     const r=await fetch(API+"/inbound/save",{method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({store_id:STORE,date:$("#date").value,lines})}).then(r=>r.json());
-    toast(`입고 저장 완료 (${r.saved}품목)`);
+    toast(`입고 저장 완료 (${r.saved}품목) · 재고에 반영됨`);
+    bumpDraft(lines.map(l=>({item_id:l.item_id,delta:l.inbound_qty})));
     load();
   }catch(e){toast("저장 실패",1);}
   finally{btn.disabled=false;btn.textContent="입고 저장";}
@@ -240,7 +264,8 @@ window.saveManual=async(id,btn)=>{
     const prev=savedMap.get(id)||0;
     await fetch(API+"/inbound/save",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({store_id:STORE,date:$("#date").value,lines:[{item_id:id,inbound_qty:prev+q}]})});
-    toast("수동 입고 등록 완료");
+    toast("수동 입고 등록 완료 · 재고에 반영됨");
+    bumpDraft([{item_id:id,delta:q}]);
     inp.value="";btn.disabled=false;
     load();
   }catch(e){toast("등록 실패",1);btn.disabled=false;}
@@ -257,7 +282,7 @@ $("#histBtn").onclick=async()=>{
     return `<div class="card"><div><div class="name">${it.name||r.item_id}</div>
       <div class="meta">${it.stock_unit||""}</div></div>
       <div class="qtywrap">
-        <input class="hQty num" data-id="${r.item_id}" inputmode="decimal" value="${r.inbound_qty}"
+        <input class="hQty num" data-id="${r.item_id}" data-old="${r.inbound_qty}" inputmode="decimal" value="${r.inbound_qty}"
           style="width:80px;text-align:right;border:1px solid var(--line);border-radius:10px;padding:9px">
         <button class="btn" style="padding:9px 12px;font-size:14px" onclick="editInb(${r.item_id},this)">저장</button>
         <button class="btn ghost" style="padding:9px 12px;font-size:14px" onclick="editInb(${r.item_id},this,true)">삭제</button>
@@ -267,11 +292,13 @@ $("#histBtn").onclick=async()=>{
 window.editInb=async(id,btn,del)=>{
   const inp=btn.closest(".qtywrap").querySelector(".hQty");
   const q=del?0:parseFloat(inp.value)||0;
+  const delta=q-(parseFloat(inp.dataset.old)||0);
   btn.disabled=true;
   try{
     await fetch(API+"/inbound/save",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({store_id:STORE,date:$("#date").value,lines:[{item_id:id,inbound_qty:q}]})});
-    toast(del?"삭제 완료":"수정 완료");
+    bumpDraft([{item_id:id,delta}]);
+    toast(del?"삭제 완료 · 재고에서 차감":"수정 완료 · 재고에 반영");
     await load();
     $("#histView").style.display="none";$("#items").style.display="";$("#histBtn").textContent="오늘 입고 내역";
     $("#histBtn").click();
