@@ -408,7 +408,7 @@ function showResults(list){
 
   // 발주 필요한 것만, 발주처별 그룹
   const need=list.filter(r=>r.status==="MANUAL"||r.order_qty>0||reviewIds.has(r.item_id))
-    .sort((a,b)=>(reviewIds.has(b.item_id)?1:0)-(reviewIds.has(a.item_id)?1:0));
+    .sort((a,b)=>(reviewIds.has(a.item_id)?1:0)-(reviewIds.has(b.item_id)?1:0));
   if(!need.length){$("#results").innerHTML="<div class='msg'>지금 발주할 품목이 없어요. 재고가 충분합니다 👍</div>";
     $("#chips").classList.add("hidden");window.scrollTo(0,0);return;}
   const ov=JSON.parse(localStorage.getItem(supKey())||"{}");
