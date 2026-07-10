@@ -437,7 +437,7 @@ function showResults(list){
     const body=rows.map(r=>{
       const manual=r.status==="MANUAL";
       const q=0;
-      const rec=(!manual&&r.order_qty>0)?` · <span style="color:var(--warn);font-weight:700">추천 ${r.order_qty}${r.order_unit||""}</span>`:"";
+      const rec=(!manual&&r.order_qty>0&&r.avg_consumption!=null)?` · <span style="color:var(--warn);font-weight:700">추천 ${r.order_qty}${r.order_unit||""}</span>`:"";
       return `<div class="slip" data-name="${r.item_name}" data-sup="${sup}">
         <div><div class="nm">${r.item_name}</div>
           <div class="sub">잔여 ${r.today_stock} ${r.stock_unit}${manual?" · 데이터 부족(직접 입력)":(r.avg_consumption!=null?` · 일평균 ${r.avg_consumption} × ${r.cover_days}일치`:"")}${rec}</div></div>
