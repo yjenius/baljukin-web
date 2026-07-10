@@ -84,8 +84,13 @@ window.sbAuth=sbA;
   </div>
 
   <h2>② 입고 수량 (발주단위 아님, 낱개/재고단위 기준)</h2>
-  <div class="hint">어제 발주 품목이 위로 와요. 맞으면 "발주대로 입고 ✓" 체크, 다르면 숫자 직접 입력.</div>
+  <div class="hint">어제 발주 품목만 표시돼요. 저장하면 목록에서 사라져요. 맞으면 "발주대로 입고 ✓" 체크, 다르면 숫자 직접 입력.</div>
+  <div style="display:flex;gap:8px;margin:0 0 10px">
+    <button class="btn ghost" id="manualBtn" style="flex:1">＋ 수동 입고</button>
+    <button class="btn ghost" id="histBtn" style="flex:1">오늘 입고 내역</button>
+  </div>
   <div id="items">불러오는 중…</div>
+  <div id="histView" style="display:none"></div>
 </main>
 
 <div class="bar"><div class="inner">
@@ -96,7 +101,7 @@ window.sbAuth=sbA;
 <script>
 const API="https://baljuking.onrender.com", STORE=1;
 const $=s=>document.querySelector(s);
-let items=[],filterSup="전체";
+let items=[],filterSup="전체",savedMap=new Map(),itemsAll=[];
 
 function toast(t,e){const el=$("#toast");el.textContent=t;el.className="toast show"+(e?" err":"");
   clearTimeout(el._t);el._t=setTimeout(()=>el.className="toast",2400);}
@@ -120,9 +125,12 @@ async function load(){
     items.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
     const ordered=new Map(orders.map(o=>[o.item_id,o]));
     const saved=new Map(inb.map(x=>[x.item_id,x.inbound_qty]));
-    // 발주품목 먼저
-    items.sort((a,b)=>(ordered.has(b.item_id)?1:0)-(ordered.has(a.item_id)?1:0));
-    $("#items").innerHTML=items.map(i=>{
+    savedMap=saved; itemsAll=its;
+    // 발주 품목 중 아직 입고 저장 안 된 것만 표시
+    const pending=items.filter(i=>ordered.has(i.item_id)&&!saved.has(i.item_id));
+    pending.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
+    if(!pending.length){$("#items").innerHTML="<div class='hint' style='padding:16px 0'>입고할 발주 품목이 없어요. 추가로 들어온 건 '수동 입고'로 등록하세요.</div>";}
+    else $("#items").innerHTML=pending.map(i=>{
       const o=ordered.get(i.item_id);
       const exp=o? o.order_qty*(i.conversion_qty||1) : null;
       const v=saved.has(i.item_id)?saved.get(i.item_id):"";
@@ -192,9 +200,82 @@ $("#saveBtn").onclick=async()=>{
     const r=await fetch(API+"/inbound/save",{method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({store_id:STORE,date:$("#date").value,lines})}).then(r=>r.json());
-    toast(`입고 저장 완료 (${r.saved}품목). 다시 고쳐 저장해도 돼요`);
+    toast(`입고 저장 완료 (${r.saved}품목)`);
+    load();
   }catch(e){toast("저장 실패",1);}
   finally{btn.disabled=false;btn.textContent="입고 저장";}
+};
+
+// ── 수동 입고 (추가발주·사입) ──
+$("#manualBtn").onclick=()=>openManual();
+function openManual(){
+  let d=document.getElementById("mDlg");if(d)d.remove();
+  d=document.createElement("div");d.id="mDlg";
+  d.style.cssText="position:fixed;inset:0;background:rgba(18,33,28,.55);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px";
+  d.innerHTML=`<div style="background:#fff;border-radius:16px;padding:16px;width:100%;max-width:420px;max-height:85vh;overflow:auto">
+    <h3 style="margin:0 0 12px">수동 입고 등록</h3>
+    <input id="mSearch" placeholder="🔍 품목 검색" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font-size:15px;margin-bottom:8px">
+    <div id="mList" style="max-height:46vh;overflow:auto"></div>
+    <button class="btn ghost" style="width:100%;margin-top:12px" onclick="document.getElementById('mDlg').remove()">닫기</button>
+  </div>`;
+  document.body.appendChild(d);
+  const render=kw=>{
+    const list=itemsAll.filter(i=>!kw||i.name.toLowerCase().includes(kw.toLowerCase())).slice(0,40);
+    $("#mList").innerHTML=list.map(i=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)">
+      <div style="flex:1"><b>${i.name}</b> <span style="color:var(--muted);font-size:12px">${i.stock_unit}</span></div>
+      <input class="mQty" data-id="${i.item_id}" inputmode="decimal" placeholder="수량"
+        style="width:70px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:8px">
+      <button class="btn" style="padding:8px 12px;font-size:14px" onclick="saveManual(${i.item_id},this)">입고</button></div>`).join("");
+  };
+  render("");
+  $("#mSearch").oninput=e=>render(e.target.value);
+}
+window.saveManual=async(id,btn)=>{
+  const inp=btn.parentElement.querySelector(".mQty");
+  const q=parseFloat(inp.value);
+  if(!q){toast("수량을 입력하세요",1);return;}
+  btn.disabled=true;
+  try{
+    // 기존 오늘 입고분에 합산
+    const prev=savedMap.get(id)||0;
+    await fetch(API+"/inbound/save",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({store_id:STORE,date:$("#date").value,lines:[{item_id:id,inbound_qty:prev+q}]})});
+    toast("수동 입고 등록 완료");
+    inp.value="";btn.disabled=false;
+    load();
+  }catch(e){toast("등록 실패",1);btn.disabled=false;}
+};
+
+// ── 오늘 입고 내역 (수정/삭제) ──
+$("#histBtn").onclick=async()=>{
+  const showing=$("#histView").style.display!=="none";
+  if(showing){$("#histView").style.display="none";$("#items").style.display="";$("#histBtn").textContent="오늘 입고 내역";return;}
+  const rows=(await fetch(`${API}/inbound?store_id=${STORE}&on=${$("#date").value}`).then(r=>r.json())).filter(r=>r.inbound_qty>0);
+  const nm=Object.fromEntries(itemsAll.map(i=>[i.item_id,i]));
+  if(!rows.length){$("#histView").innerHTML="<div class='hint' style='padding:16px 0'>오늘 입고된 품목이 없어요.</div>";}
+  else $("#histView").innerHTML=rows.map(r=>{const it=nm[r.item_id]||{};
+    return `<div class="card"><div><div class="name">${it.name||r.item_id}</div>
+      <div class="meta">${it.stock_unit||""}</div></div>
+      <div class="qtywrap">
+        <input class="hQty num" data-id="${r.item_id}" inputmode="decimal" value="${r.inbound_qty}"
+          style="width:80px;text-align:right;border:1px solid var(--line);border-radius:10px;padding:9px">
+        <button class="btn" style="padding:9px 12px;font-size:14px" onclick="editInb(${r.item_id},this)">저장</button>
+        <button class="btn ghost" style="padding:9px 12px;font-size:14px" onclick="editInb(${r.item_id},this,true)">삭제</button>
+      </div></div>`;}).join("");
+  $("#histView").style.display="";$("#items").style.display="none";$("#histBtn").textContent="◀ 발주 입고로";
+};
+window.editInb=async(id,btn,del)=>{
+  const inp=btn.closest(".qtywrap").querySelector(".hQty");
+  const q=del?0:parseFloat(inp.value)||0;
+  btn.disabled=true;
+  try{
+    await fetch(API+"/inbound/save",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({store_id:STORE,date:$("#date").value,lines:[{item_id:id,inbound_qty:q}]})});
+    toast(del?"삭제 완료":"수정 완료");
+    await load();
+    $("#histView").style.display="none";$("#items").style.display="";$("#histBtn").textContent="오늘 입고 내역";
+    $("#histBtn").click();
+  }catch(e){toast("실패",1);btn.disabled=false;}
 };
 
 window.delR=async id=>{if(!confirm("사진 삭제?"))return;
