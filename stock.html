@@ -286,10 +286,18 @@ async function loadPrev(){
     const [Y,M,D]=$("#date").value.split("-").map(Number);
     const dd=new Date(Y,M-1,D-1);
     const y=`${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,"0")}-${String(dd.getDate()).padStart(2,"0")}`;
-    const r=await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=eq.${y}&select=*`);
-    const r2=await sbFetch(`/daily_inbound?store_id=eq.${$("#store").value}&date=eq.${$("#date").value}&select=item_id,inbound_qty`);
+    // 가장 최근 재고일(전일 우선, 없으면 과거 최근) 찾기
+    const rs=await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=lt.${$("#date").value}&order=date.desc&limit=1&select=date`);
+    let baseDay=y;
+    if(rs.ok){const a=await rs.json();if(a.length)baseDay=a[0].date;}
+    // baseDay 다음날 ~ 오늘까지 입고 합산 (그 사이 들어온 물량 모두 반영)
+    const [by,bm,bd]=baseDay.split("-").map(Number);
+    const nx=new Date(by,bm-1,bd+1);
+    const from=`${nx.getFullYear()}-${String(nx.getMonth()+1).padStart(2,"0")}-${String(nx.getDate()).padStart(2,"0")}`;
+    const r2=await sbFetch(`/daily_inbound?store_id=eq.${$("#store").value}&date=gte.${from}&date=lte.${$("#date").value}&select=item_id,inbound_qty`);
     const inbMap={};
-    if(r2.ok)(await r2.json()).forEach(x=>inbMap[x.item_id]=x.inbound_qty);
+    if(r2.ok)(await r2.json()).forEach(x=>inbMap[x.item_id]=(inbMap[x.item_id]||0)+x.inbound_qty);
+    const r=await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=eq.${baseDay}&select=*`);
     if(!r.ok)return;
     (await r.json()).forEach(row=>{
       const q=row.stock_qty??row.qty??row.closing_qty??row.closing_stock;
@@ -417,10 +425,11 @@ function showResults(list){
   $("#results").innerHTML=Object.entries(groups).map(([sup,rows])=>{
     const body=rows.map(r=>{
       const manual=r.status==="MANUAL";
-      const q=manual?0:r.order_qty;
+      const q=0;
+      const rec=(!manual&&r.order_qty>0)?` · <span style="color:var(--warn);font-weight:700">추천 ${r.order_qty}${r.order_unit||""}</span>`:"";
       return `<div class="slip" data-name="${r.item_name}" data-sup="${sup}">
         <div><div class="nm">${r.item_name}</div>
-          <div class="sub">잔여 ${r.today_stock} ${r.stock_unit}${manual?" · 데이터 부족(직접 입력)":(r.avg_consumption!=null?` · 일평균 ${r.avg_consumption} × ${r.cover_days}일치 추천`:"")}</div></div>
+          <div class="sub">잔여 ${r.today_stock} ${r.stock_unit}${manual?" · 데이터 부족(직접 입력)":(r.avg_consumption!=null?` · 일평균 ${r.avg_consumption} × ${r.cover_days}일치`:"")}${rec}</div></div>
         <div style="display:flex;align-items:center;gap:6px">
           ${manual?'<span class="badge manual">수동</span>':""}${reviewIds.has(r.item_id)?'<span class="badge manual">검토</span>':""}
           <button class="supbtn" data-id="${r.item_id}">거래처↔</button>
