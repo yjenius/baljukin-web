@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>발주왕 · 발주하기</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#12211c;--paper:#f6f4ec;--card:#fff;--green:#1f7a4d;--green-d:#155f3b;
+    --line:#dcd8cb;--muted:#6b7169;--warn:#c23b2b;--warn-bg:#fbe9e6;
+    --shadow:0 1px 0 rgba(0,0,0,.04),0 8px 24px -18px rgba(18,33,28,.45)}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{background:var(--paper);color:var(--ink);font-family:"Noto Sans KR",system-ui,sans-serif;padding-bottom:110px}
+  .num{font-family:"Archivo","Noto Sans KR",sans-serif;font-variant-numeric:tabular-nums}
+  header{position:sticky;top:0;z-index:20;background:var(--ink);color:#eef2ec;padding:12px 14px;box-shadow:var(--shadow)}
+  .brand{display:flex;align-items:baseline;gap:8px}
+  .brand b{font-family:"Archivo";font-weight:800;font-size:19px}
+  .brand span{font-size:12px;color:#9fb3a6}
+  .brand a{color:#9fb3a6;font-size:13px;text-decoration:none;margin-left:auto}
+  .dateinput,.search{background:#1b2f28;color:#eef2ec;border:1px solid #2c463c;
+    border-radius:11px;padding:10px 12px;font-size:15px;font-family:inherit;width:100%}
+  .dateinput{margin-top:10px}
+  .search{margin-top:8px}
+  .chips{display:flex;gap:6px;overflow-x:auto;margin-top:8px;padding-bottom:2px}
+  .chip{white-space:nowrap;font-size:13px;padding:6px 12px;border-radius:999px;
+    background:#1b2f28;color:#cfe0d6;border:1px solid #2c463c;cursor:pointer}
+  .chip.on{background:var(--green);color:#fff;border-color:var(--green)}
+  main{max-width:680px;margin:0 auto;padding:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;
+    margin-bottom:8px;box-shadow:var(--shadow);display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 10px}
+  .card>div:first-child{flex:1 1 150px;min-width:130px}
+  .card.picked{border-color:var(--green)}
+  .name{font-weight:700;font-size:16px}
+  .meta{font-size:12px;color:var(--muted);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap}
+  .qtywrap{display:flex;align-items:center;gap:6px;margin-left:auto}
+  .step{width:40px;height:44px;border:1px solid var(--line);background:#fff;border-radius:10px;font-size:20px;font-weight:700;cursor:pointer;color:var(--ink)}
+  .oqty{width:56px;text-align:center;border:1px solid var(--line);border-radius:10px;padding:9px 4px;
+    font-size:18px;font-weight:800;background:#fbfaf5;color:var(--green-d);font-family:"Archivo"}
+  .u{font-size:13px;color:var(--muted);min-width:24px}
+  .grp{margin:16px 2px 8px;font-size:13px;font-weight:700;color:var(--muted);display:flex;justify-content:space-between}
+  .grp .sup{color:var(--ink);font-size:15px}
+  .badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:#eef2ea;color:var(--green-d)}
+  .badge.warn{background:var(--warn-bg);color:var(--warn)}
+  .del{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;font-size:14px;cursor:pointer;color:var(--warn)}
+  .msg{text-align:center;color:var(--muted);padding:36px 16px}
+  .bar{position:fixed;left:0;right:0;bottom:0;z-index:30;
+    background:linear-gradient(180deg,rgba(246,244,236,0),var(--paper) 28%);
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
+  .bar .inner{max-width:680px;margin:0 auto;display:flex;gap:8px}
+  .bar .inner.hidden{display:none}
+  .btn{flex:1;border:none;border-radius:13px;padding:15px;font-family:"Archivo";font-weight:700;
+    font-size:16px;background:var(--green);color:#fff;cursor:pointer;box-shadow:var(--shadow)}
+  .btn:disabled{background:#9fb0a6}
+  .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .toast{position:fixed;left:50%;bottom:120px;transform:translateX(-50%);background:var(--ink);
+    color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;opacity:0;transition:.25s;z-index:40}
+  .toast.show{opacity:1}
+  .toast.err{background:var(--warn)}
+  .hidden{display:none}
+  .total{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;
+    display:flex;justify-content:space-between;font-weight:700}
+</style>
+</head>
+<body>
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+const sbA=createClient("https://uisdezsmyknmwayexhbu.supabase.co","sb_publishable_18Z8F9WYbJkbmFGIumZdKA_f6YGy9po");
+const {data:{session}}=await sbA.auth.getSession();
+if(!session)location.href="index.html";
+</script>
+
+<header>
+  <div class="brand"><b>발주왕</b><span id="viewLabel">발주하기</span>
+    <a href="index.html">🏠 메인</a></div>
+  <input class="dateinput" type="date" id="date">
+  <input class="search" id="search" placeholder="🔍 품목 검색" autocomplete="off">
+  <div class="chips" id="chips"></div>
+</header>
+
+<main id="pickView"><div id="items" class="msg">불러오는 중…</div></main>
+<main id="cartView" class="hidden"><div id="cart"></div></main>
+<main id="histView" class="hidden"><div id="hist"></div></main>
+
+<div class="bar">
+  <div class="inner" id="barPick">
+    <button class="btn ghost" id="histBtn">주문내역</button>
+    <button class="btn" id="addBtn">🛒 담기</button>
+    <button class="btn ghost" id="cartBtn">🛒 장바구니</button>
+  </div>
+  <div class="inner hidden" id="barCart">
+    <button class="btn ghost" id="contBtn">주문계속</button>
+    <button class="btn ghost" id="saveBtn">수정 저장</button>
+    <button class="btn" id="confirmBtn">주문하기</button>
+  </div>
+  <div class="inner hidden" id="barHist">
+    <button class="btn ghost" id="backBtn">◀ 발주로</button>
+    <button class="btn" id="shareBtn">공유</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API="https://baljuking.onrender.com", STORE=1;
+const $=s=>document.querySelector(s);
+let items=[], filterSup="전체", orderMap={}, view="pick";
+
+function toast(t,e){const el=$("#toast");el.textContent=t;el.className="toast show"+(e?" err":"");
+  clearTimeout(el._t);el._t=setTimeout(()=>el.className="toast",2400);}
+function today(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
+
+async function fetchOrders(){
+  const rows=await fetch(`${API}/orders?store_id=${STORE}&on=${$("#date").value}`).then(r=>r.json());
+  orderMap={};rows.filter(r=>r.order_qty>0).forEach(r=>orderMap[r.item_id]=r);
+  return rows;
+}
+
+async function init(){
+  $("#date").value=today();
+  try{
+    items=await fetch(API+"/items").then(r=>r.json());
+    items.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
+    await fetchOrders();
+    buildChips(); renderPick();
+  }catch(e){$("#items").innerHTML="<div class='msg'>서버 연결 실패 — 잠시 뒤 새로고침</div>";}
+}
+$("#date").onchange=async()=>{await fetchOrders();renderPick();};
+
+function buildChips(){
+  const sups=["전체",...new Set(items.map(i=>(i.supplier||"미지정").toUpperCase()))];
+  $("#chips").innerHTML=sups.map(s=>`<div class="chip${s===filterSup?" on":""}" data-s="${s}">${s}</div>`).join("");
+  $("#chips").querySelectorAll(".chip").forEach(c=>c.onclick=()=>{filterSup=c.dataset.s;
+    $("#chips").querySelectorAll(".chip").forEach(x=>x.classList.toggle("on",x===c));applyF();});
+}
+function applyF(){
+  const kw=$("#search").value.trim().toLowerCase();
+  document.querySelectorAll("#items .card").forEach(c=>{
+    const okS=filterSup==="전체"||c.dataset.sup===filterSup;
+    const okK=!kw||c.dataset.name.toLowerCase().includes(kw);
+    c.style.display=(okS&&okK)?"":"none";});
+}
+$("#search").oninput=applyF;
+
+function renderPick(){
+  $("#items").className="";
+  $("#items").innerHTML=items.map(i=>{
+    const o=orderMap[i.item_id];
+    const q=o?o.order_qty:0;
+    return `<div class="card${q>0?" picked":""}" data-id="${i.item_id}" data-name="${i.name}"
+      data-sup="${(i.supplier||'미지정').toUpperCase()}" data-init="${q}">
+      <div><div class="name">${i.name}</div>
+        <div class="meta"><span>${(i.supplier||'미지정').toUpperCase()}</span><span>${i.stock_unit}</span>${o?`<span class="badge${o.status==="주문완료"?"":" warn"}">${o.status||"담김"}</span>`:""}</div></div>
+      <div class="qtywrap">
+        <button class="step" data-d="-1">−</button>
+        <input class="oqty num" inputmode="decimal" value="${q}">
+        <button class="step" data-d="1">＋</button>
+        <span class="u">${i.order_unit||"EA"}</span></div>
+    </div>`;
+  }).join("");
+  document.querySelectorAll("#items .step").forEach(b=>b.onclick=()=>{
+    const el=b.parentElement.querySelector(".oqty");
+    el.value=Math.max(0,(parseFloat(el.value)||0)+ +b.dataset.d);
+    el.dispatchEvent(new Event("input"));
+  });
+  document.querySelectorAll("#items .oqty").forEach(el=>{
+    el.addEventListener("focus",()=>el.select());
+    el.addEventListener("input",()=>{
+      el.closest(".card").classList.toggle("picked",(parseFloat(el.value)||0)>0);});
+  });
+  applyF();
+}
+
+// 담기: 수량이 바뀐 품목만 전송 (0으로 바꾼 건 삭제)
+$("#addBtn").onclick=async()=>{
+  const lines=[];
+  document.querySelectorAll("#items .card").forEach(c=>{
+    const q=parseFloat(c.querySelector(".oqty").value)||0;
+    const init=parseFloat(c.dataset.init)||0;
+    if(q===init)return;
+    const it=items.find(i=>i.item_id==c.dataset.id);
+    const prev=orderMap[c.dataset.id];
+    const st=q===0?null:(prev&&(prev.status==="주문완료"||prev.status==="수정완료")?"수정완료":"담김");
+    lines.push({item_id:+c.dataset.id,item_name:it.name,supplier:(it.supplier||"미지정").toUpperCase(),
+      order_qty:q,order_unit:it.order_unit||"EA",status:st});
+  });
+  if(!lines.length){toast("바뀐 품목이 없어요",1);return;}
+  const btn=$("#addBtn");btn.disabled=true;
+  try{
+    await fetch(API+"/orders/save",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({store_id:STORE,date:$("#date").value,lines})});
+    await fetchOrders();renderPick();
+    toast(`🛒 ${lines.filter(l=>l.order_qty>0).length}품목 담았어요`);
+  }catch(e){toast("담기 실패",1);}
+  finally{btn.disabled=false;}
+};
+
+// 장바구니
+$("#cartBtn").onclick=async()=>{await fetchOrders();renderCart();switchView("cart");};
+function renderCart(){
+  const rows=Object.values(orderMap);
+  if(!rows.length){$("#cart").innerHTML="<div class='msg'>장바구니가 비었어요</div>";return;}
+  const g={};
+  rows.forEach(r=>(g[r.supplier||"미지정"]=g[r.supplier||"미지정"]||[]).push(r));
+  const total=rows.length;
+  $("#cart").innerHTML=`<div class="total"><span>총 ${total}품목</span><span>${$("#date").value}</span></div>`+
+    Object.entries(g).map(([s,l])=>
+      `<div class="grp"><span class="sup">📦 ${s}</span><span>${l.length}품목</span></div>`+
+      l.map(r=>`<div class="card" data-id="${r.item_id}" data-name="${r.item_name}" data-sup="${r.supplier}">
+        <div><div class="name">${r.item_name}</div>
+          <div class="meta"><span class="badge${r.status==="주문완료"?"":" warn"}">${r.status||"담김"}</span></div></div>
+        <div class="qtywrap">
+          <button class="step" data-d="-1">−</button>
+          <input class="oqty num" data-unit="${r.order_unit||""}" inputmode="decimal" value="${r.order_qty}">
+          <button class="step" data-d="1">＋</button>
+          <span class="u">${r.order_unit||""}</span>
+          <button class="del">✕</button></div>
+      </div>`).join("")).join("");
+  document.querySelectorAll("#cart .step").forEach(b=>b.onclick=()=>{
+    const el=b.parentElement.querySelector(".oqty");
+    el.value=Math.max(0,(parseFloat(el.value)||0)+ +b.dataset.d);});
+  document.querySelectorAll("#cart .oqty").forEach(el=>el.addEventListener("focus",()=>el.select()));
+  document.querySelectorAll("#cart .del").forEach(b=>b.onclick=()=>{
+    b.closest(".card").querySelector(".oqty").value=0;
+    b.closest(".card").style.opacity=.4;});
+}
+function cartLines(status){
+  return [...document.querySelectorAll("#cart .card")].map(c=>{
+    const q=parseFloat(c.querySelector(".oqty").value)||0;
+    return {item_id:+c.dataset.id,item_name:c.dataset.name,supplier:c.dataset.sup,
+      order_qty:q,order_unit:c.querySelector(".oqty").dataset.unit,
+      status:q===0?null:status};
+  });
+}
+async function saveCart(status,doneMsg){
+  const lines=cartLines(status);
+  if(!lines.length){toast("장바구니가 비었어요",1);return;}
+  try{
+    await fetch(API+"/orders/save",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({store_id:STORE,date:$("#date").value,lines})});
+    await fetchOrders();renderCart();
+    toast(doneMsg);
+  }catch(e){toast("저장 실패",1);}
+}
+$("#saveBtn").onclick=()=>saveCart("수정완료","수정 완료");
+$("#confirmBtn").onclick=()=>saveCart("주문완료","✅ 주문 완료! 공유는 주문내역에서");
+$("#contBtn").onclick=async()=>{await fetchOrders();renderPick();switchView("pick");};
+
+// 주문내역
+$("#histBtn").onclick=async()=>{await fetchOrders();renderHist();switchView("hist");};
+function renderHist(){
+  const rows=Object.values(orderMap);
+  if(!rows.length){$("#hist").innerHTML="<div class='msg'>이 날짜의 주문이 없어요</div>";return;}
+  const g={};
+  rows.forEach(r=>(g[r.supplier||"미지정"]=g[r.supplier||"미지정"]||[]).push(r));
+  $("#hist").innerHTML=`<div class="total"><span>주문일자 ${$("#date").value}</span><span>총 ${rows.length}품목</span></div>`+
+    Object.entries(g).map(([s,l])=>
+      `<div class="grp"><span class="sup">📦 ${s}</span><span>${l.length}품목</span></div>`+
+      l.map(r=>`<div class="card">
+        <div><div class="name">${r.item_name}</div></div>
+        <div class="qtywrap"><span class="num" style="font-weight:800;font-size:18px">${r.order_qty}</span>
+          <span class="u">${r.order_unit||""}</span>
+          <span class="badge${r.status==="주문완료"?"":" warn"}">${r.status||"담김"}</span></div>
+      </div>`).join("")).join("");
+}
+$("#backBtn").onclick=()=>{renderPick();switchView("pick");};
+$("#shareBtn").onclick=async()=>{
+  const rows=Object.values(orderMap);
+  if(!rows.length){toast("공유할 주문이 없어요",1);return;}
+  const g={};
+  rows.forEach(r=>(g[r.supplier||"미지정"]=g[r.supplier||"미지정"]||[]).push(`- ${r.item_name} ${r.order_qty}${r.order_unit||""}`));
+  const txt=`[발주] ${$("#date").value}\n\n`+Object.entries(g).map(([s,l])=>`■ ${s}\n${l.join("\n")}`).join("\n\n");
+  if(navigator.share){try{await navigator.share({text:txt});return;}catch(e){}}
+  await navigator.clipboard.writeText(txt);
+  toast("주문 내용을 복사했어요");
+};
+
+function switchView(v){
+  view=v;
+  $("#pickView").classList.toggle("hidden",v!=="pick");
+  $("#cartView").classList.toggle("hidden",v!=="cart");
+  $("#histView").classList.toggle("hidden",v!=="hist");
+  $("#barPick").classList.toggle("hidden",v!=="pick");
+  $("#barCart").classList.toggle("hidden",v!=="cart");
+  $("#barHist").classList.toggle("hidden",v!=="hist");
+  $("#viewLabel").textContent=v==="pick"?"발주하기":v==="cart"?"장바구니":"주문내역";
+  $("#search").style.display=v==="pick"?"":"none";
+  $("#chips").style.display=v==="pick"?"":"none";
+  window.scrollTo(0,0);
+}
+
+init();
+</script>
+</body>
+</html>
