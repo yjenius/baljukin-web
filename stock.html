@@ -291,6 +291,19 @@ async function sbFetch(path,opt={}){const t=await getToken();
   return fetch(SB+path,{...opt,headers:{apikey:SBKEY,Authorization:`Bearer ${t||SBKEY}`,
     "Content-Type":"application/json",...(opt.headers||{})}});}
 let prevMap={};
+async function syncDailyStock(lines){
+  try{
+    const ids=lines.map(l=>l.item_id).join(",");
+    const r=await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=eq.${$("#date").value}&item_id=in.(${ids})&select=item_id,stock_qty`);
+    if(!r.ok)return;
+    const cur=Object.fromEntries((await r.json()).map(x=>[x.item_id,parseFloat(x.stock_qty)]));
+    for(const l of lines){
+      if(cur[l.item_id]===undefined||cur[l.item_id]===l.qty)continue;
+      await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=eq.${$("#date").value}&item_id=eq.${l.item_id}`,
+        {method:"PATCH",body:JSON.stringify({stock_qty:l.qty,is_carried:false,is_stockout:l.so})});
+    }
+  }catch(e){}
+}
 async function loadPrev(){
   prevMap={};
   try{
@@ -387,7 +400,10 @@ $("#tempBtn").onclick=async()=>{
   const r=await sbFetch("/stock_draft?on_conflict=store_id,date,item_id",
     {method:"POST",headers:{Prefer:"resolution=merge-duplicates"},body:JSON.stringify(lines)});
   btn.disabled=false;
-  if(r.ok){sortUnfilled();toast(`서버 저장 완료 ${lines.length}건 · 다른 폰에서도 보여요`);}
+  if(r.ok){
+    sortUnfilled();toast(`서버 저장 완료 ${lines.length}건`);
+    syncDailyStock(lines);   // 확정 재고에도 반영 (그날 기록이 이미 있으면 값 갱신)
+  }
   else toast("저장 실패 — SQL 실행했는지 확인",1);
 };
 function sortUnfilled(){
