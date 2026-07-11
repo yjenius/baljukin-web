@@ -227,10 +227,13 @@ $("#camInput").onchange=async e=>{
 
 $("#saveBtn").onclick=async()=>{
   const btn=$("#saveBtn");btn.disabled=true;btn.textContent="저장 중…";
-  const lines=[...document.querySelectorAll(".card")].map(c=>{
-    const v=c.querySelector(".qty").value.trim();
+  const lines=[...document.querySelectorAll("#items .card")].map(c=>{
+    const q=c.querySelector(".qty");
+    if(!q)return null;
+    const v=q.value.trim();
     return v===""?null:{item_id:+c.dataset.id,inbound_qty:parseFloat(v)||0};
   }).filter(Boolean);
+  if(!lines.length){toast("입력된 입고가 없어요",1);btn.disabled=false;btn.textContent="입고 저장";return;}
   try{
     const r=await fetch(API+"/inbound/save",{method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -286,7 +289,7 @@ window.saveManual=async(id,btn)=>{
 // ── 오늘 입고 내역 (수정/삭제) ──
 $("#histBtn").onclick=async()=>{
   const showing=$("#histView").style.display!=="none";
-  if(showing){$("#histView").style.display="none";$("#items").style.display="";$("#histBtn").textContent="오늘 입고 내역";return;}
+  if(showing){$("#histView").style.display="none";$("#items").style.display="";$("#histBtn").textContent="오늘 입고 내역";$("#saveBtn").style.display="";return;}
   const rows=(await fetch(`${API}/inbound?store_id=${STORE}&on=${$("#date").value}`).then(r=>r.json())).filter(r=>r.inbound_qty>0);
   const nm=Object.fromEntries(itemsAll.map(i=>[i.item_id,i]));
   if(!rows.length){$("#histView").innerHTML="<div class='hint' style='padding:16px 0'>오늘 입고된 품목이 없어요.</div>";}
@@ -300,6 +303,7 @@ $("#histBtn").onclick=async()=>{
         <button class="btn ghost" style="padding:9px 12px;font-size:14px" onclick="editInb(${r.item_id},this,true)">삭제</button>
       </div></div>`;}).join("");
   $("#histView").style.display="";$("#items").style.display="none";$("#histBtn").textContent="◀ 발주 입고로";
+  $("#saveBtn").style.display="none";
 };
 window.editInb=async(id,btn,del)=>{
   const inp=btn.closest(".qtywrap").querySelector(".hQty");
@@ -312,7 +316,7 @@ window.editInb=async(id,btn,del)=>{
     bumpDraft([{item_id:id,delta}]);
     toast(del?"삭제 완료 · 재고에서 차감":"수정 완료 · 재고에 반영");
     await load();
-    $("#histView").style.display="none";$("#items").style.display="";$("#histBtn").textContent="오늘 입고 내역";
+    $("#histView").style.display="none";$("#items").style.display="";$("#histBtn").textContent="오늘 입고 내역";$("#saveBtn").style.display="";
     $("#histBtn").click();
   }catch(e){toast("실패",1);btn.disabled=false;}
 };
