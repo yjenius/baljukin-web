@@ -152,17 +152,26 @@ async function load(){
       Promise.all([
         fetch(`${API}/orders?store_id=${STORE}&on=${yesterday(on)}`).then(r=>r.json()),
         fetch(`${API}/orders?store_id=${STORE}&on=${on}`).then(r=>r.json())
-      ]).then(([a,b])=>[...a,...b]),
-      fetch(`${API}/inbound?store_id=${STORE}&on=${on}`).then(r=>r.json()),
+      ]).then(([a,b])=>[...a.map(o=>({...o,_od:"y"})),...b.map(o=>({...o,_od:"t"}))]),
+      Promise.all([
+        fetch(`${API}/inbound?store_id=${STORE}&on=${on}`).then(r=>r.json()),
+        fetch(`${API}/inbound?store_id=${STORE}&on=${yesterday(on)}`).then(r=>r.json())
+      ]),
       fetch(`${API}/receipts?store_id=${STORE}&on=${on}`).then(r=>r.json())
     ]);
     items=its;
     items.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
-    const ordered=new Map(orders.map(o=>[o.item_id,o]));
-    const saved=new Map(inb.map(x=>[x.item_id,x.inbound_qty]));
+    const ordered=new Map(orders.map(o=>[o.item_id,o]));   // 오늘 발주가 어제 발주를 덮음
+    const saved=new Map(inb[0].map(x=>[x.item_id,x.inbound_qty]));
+    const savedY=new Set(inb[1].filter(x=>x.inbound_qty>0).map(x=>x.item_id));
     savedMap=saved; itemsAll=its;
-    // 발주 품목 중 아직 입고 저장 안 된 것만 표시
-    const pending=items.filter(i=>ordered.has(i.item_id)&&!saved.has(i.item_id));
+    // 미입고 발주만 표시: 오늘 입고분 제외 + 어제 발주는 어제 입고분도 제외
+    const pending=items.filter(i=>{
+      const o=ordered.get(i.item_id);
+      if(!o||saved.has(i.item_id))return false;
+      if(o._od==="y"&&savedY.has(i.item_id))return false;
+      return true;
+    });
     pending.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
     if(!pending.length){$("#items").innerHTML="<div class='hint' style='padding:16px 0'>입고할 발주 품목이 없어요. 추가로 들어온 건 '수동 입고'로 등록하세요.</div>";}
     else $("#items").innerHTML=pending.map(i=>{
