@@ -50,6 +50,7 @@ window.sbToken=session?.access_token||null;
     <div class="row">
       <button class="btn ghost" id="stockCsv">재고현황 엑셀</button>
       <button class="btn ghost" id="orderCsv">발주현황 엑셀</button>
+      <button class="btn ghost" id="usageCsv">사용량 엑셀</button>
     </div>
     <div class="row">
       <button class="btn" id="loadBtn">화면으로 보기</button>
@@ -116,6 +117,42 @@ $("#orderCsv").onclick=async()=>{
   rows.forEach(r=>out.push([r.date,r.supplier||"",r.item_name,r.order_qty,r.order_unit||""]));
   dlCSV(`발주현황_${$("#month").value}.csv`,out);
 };
+// 일별 사용량 = 전일재고 + 당일입고 − 당일재고
+$("#usageCsv").onclick=async()=>{
+  const [f,t]=range();
+  // 전월 마지막 기록(1일 사용량 계산용)
+  const prevQ=sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=lt.${f}&order=date.desc&select=date&limit=1`);
+  const [stR,inR,pR]=await Promise.all([
+    sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=gte.${f}&date=lte.${t}&select=item_id,date,stock_qty`),
+    sbFetch(`/daily_inbound?store_id=eq.${$("#store").value}&date=gte.${f}&date=lte.${t}&select=item_id,date,inbound_qty`),
+    prevQ]);
+  const st=stR.ok?await stR.json():[], inb=inR.ok?await inR.json():[];
+  let prev=[];
+  if(pR.ok){const p=await pR.json();
+    if(p.length){const r=await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=eq.${p[0].date}&select=item_id,date,stock_qty`);
+      if(r.ok)prev=await r.json();}}
+  if(!st.length){toast("해당 월 재고 데이터가 없어요");return;}
+  const stock={},inbound={};
+  [...prev,...st].forEach(r=>(stock[r.item_id]=stock[r.item_id]||{})[r.date]=r.stock_qty);
+  inb.forEach(r=>(inbound[r.item_id]=inbound[r.item_id]||{})[r.date]=(inbound[r.item_id]?.[r.date]||0)+r.inbound_qty);
+  const dates=[...new Set(st.map(r=>r.date))].sort();
+  const out=[["파트","품명","단위",...dates.map(d=>d.slice(5)),"월합계"]];
+  Object.keys(stock)
+    .sort((a,b)=>((items[a]||{}).location||9999)-((items[b]||{}).location||9999))
+    .forEach(id=>{
+      const it=items[id]||{}; let sum=0,has=false;
+      const cells=dates.map(d=>{
+        const days=Object.keys(stock[id]).filter(x=>x<d).sort();
+        const pd=days[days.length-1];                     // 직전 기록일
+        if(pd===undefined||stock[id][d]===undefined)return "";
+        const use=stock[id][pd]+((inbound[id]||{})[d]||0)-stock[id][d];
+        sum+=use;has=true;return use;
+      });
+      if(has)out.push([it.part||"",it.name||id,it.stock_unit||"",...cells,sum]);
+    });
+  dlCSV(`사용량_${$("#month").value}.csv`,out);
+};
+
 $("#loadBtn").onclick=async()=>{
   $("#out").innerHTML="<div class='msg'>불러오는 중…</div>";
   const [st,od]=await Promise.all([fetchStock(),fetchOrders()]);
