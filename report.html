@@ -136,7 +136,7 @@ $("#usageCsv").onclick=async()=>{
   [...prev,...st].forEach(r=>(stock[r.item_id]=stock[r.item_id]||{})[r.date]=r.stock_qty);
   inb.forEach(r=>(inbound[r.item_id]=inbound[r.item_id]||{})[r.date]=(inbound[r.item_id]?.[r.date]||0)+r.inbound_qty);
   const dates=[...new Set(st.map(r=>r.date))].sort();
-  const out=[["파트","품명","단위",...dates.map(d=>d.slice(5)),"월합계"]];
+  const out=[["위치","파트","발주처","품명","단위",...dates.map(d=>d.slice(5)),"월합계"]];
   Object.keys(stock)
     .sort((a,b)=>((items[a]||{}).location||9999)-((items[b]||{}).location||9999))
     .forEach(id=>{
@@ -148,7 +148,7 @@ $("#usageCsv").onclick=async()=>{
         const use=stock[id][pd]+((inbound[id]||{})[d]||0)-stock[id][d];
         sum+=use;has=true;return use;
       });
-      if(has)out.push([it.part||"",it.name||id,it.stock_unit||"",...cells,sum]);
+      if(has)out.push([it.location||"",it.part||"",it.supplier||"",it.name||id,it.stock_unit||"",...cells,sum]);
     });
   dlCSV(`사용량_${$("#month").value}.csv`,out);
 };
