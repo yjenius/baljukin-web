@@ -155,7 +155,8 @@ async function load(){
       ]).then(([a,b])=>[...a.map(o=>({...o,_od:"y"})),...b.map(o=>({...o,_od:"t"}))]),
       Promise.all([
         fetch(`${API}/inbound?store_id=${STORE}&on=${on}`).then(r=>r.json()),
-        fetch(`${API}/inbound?store_id=${STORE}&on=${yesterday(on)}`).then(r=>r.json())
+        fetch(`${API}/inbound?store_id=${STORE}&on=${yesterday(on)}`).then(r=>r.json()),
+        fetch(`${API}/orders?store_id=${STORE}&on=${yesterday(yesterday(on))}`).then(r=>r.json())
       ]),
       fetch(`${API}/receipts?store_id=${STORE}&on=${on}`).then(r=>r.json())
     ]);
@@ -164,12 +165,14 @@ async function load(){
     const ordered=new Map(orders.map(o=>[o.item_id,o]));   // 오늘 발주가 어제 발주를 덮음
     const saved=new Map(inb[0].map(x=>[x.item_id,x.inbound_qty]));
     const savedY=new Set(inb[1].filter(x=>x.inbound_qty>0).map(x=>x.item_id));
+    const orderedD2=new Set(inb[2].map(o=>o.item_id));   // 그제 발주 품목
     savedMap=saved; itemsAll=its;
     // 미입고 발주만 표시: 오늘 입고분 제외 + 어제 발주는 어제 입고분도 제외
     const pending=items.filter(i=>{
       const o=ordered.get(i.item_id);
       if(!o||saved.has(i.item_id))return false;
-      if(o._od==="y"&&savedY.has(i.item_id))return false;
+      // 어제 입고가 있어도 그제 발주분일 수 있으면(그제도 발주함) 제외하지 않음
+      if(o._od==="y"&&savedY.has(i.item_id)&&!orderedD2.has(i.item_id))return false;
       return true;
     });
     pending.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
