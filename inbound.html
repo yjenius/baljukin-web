@@ -152,66 +152,42 @@ const LOOKBACK=10;  // 택배 등 지연분까지 소급 조회
 async function load(){
   const on=$("#date").value;
   try{
-    // 최근 LOOKBACK일 발주 + 그 기간 입고 전부 조회
-    const days=[];for(let k=0;k<=LOOKBACK;k++)days.push(addDays(on,-k));
-    const [its,recs,...rest]=await Promise.all([
+    const [its,pending,recs]=await Promise.all([
       fetch(API+"/items").then(r=>r.json()),
-      fetch(`${API}/receipts?store_id=${STORE}&on=${on}`).then(r=>r.json()),
-      ...days.map(d=>Promise.all([
-        fetch(`${API}/orders?store_id=${STORE}&on=${d}`).then(r=>r.json()),
-        fetch(`${API}/inbound?store_id=${STORE}&on=${d}`).then(r=>r.json())
-      ]).then(([o,i])=>({d,orders:o,inbound:i})))
+      fetch(`${API}/orders/pending?store_id=${STORE}`).then(r=>r.json()),
+      fetch(`${API}/receipts?store_id=${STORE}&on=${on}`).then(r=>r.json())
     ]);
-    items=its;
-    items.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
+    items=its; itemsAll=its;
     const itMap=Object.fromEntries(its.map(i=>[i.item_id,i]));
-    itemsAll=its;
-
-    // 품목별 누적 발주량·누적 입고량 집계 (기간 전체)
-    const orderedQty={}, recvQty={}, arrivalBy={};
-    rest.forEach(({d,orders,inbound})=>{
-      orders.filter(o=>o.order_qty>0).forEach(o=>{
-        const it=itMap[o.item_id]||{};
-        const conv=parseFloat(it.conversion_qty)||1;
-        const lead=parseInt(it.lead_time_days)||1;   // 배송기간: 0=당일,1=익일,2+=택배
-        const arrive=addDays(d,lead);
-        // 재고단위 예상 입고량 누적
-        orderedQty[o.item_id]=(orderedQty[o.item_id]||0)+o.order_qty*conv;
-        // 가장 이른 도착예정일 기록
-        if(!arrivalBy[o.item_id]||arrive<arrivalBy[o.item_id])arrivalBy[o.item_id]=arrive;
-      });
-      inbound.forEach(x=>{if(x.inbound_qty>0)recvQty[x.item_id]=(recvQty[x.item_id]||0)+x.inbound_qty;});
+    // 위치순 정렬
+    pending.sort((a,b)=>{
+      const la=parseFloat((itMap[a.item_id]||{}).location)||9999;
+      const lb=parseFloat((itMap[b.item_id]||{}).location)||9999;
+      return la-lb;
     });
+    // 오늘 이미 입고된 내역(수량칸 표시는 새로 입력하므로 비움) — savedMap은 수동입고 합산용
+    const todayIn=(await fetch(`${API}/inbound?store_id=${STORE}&on=${on}`).then(r=>r.json()))
+      .filter(x=>x.inbound_qty>0);
+    savedMap=new Map(todayIn.map(x=>[x.item_id,x.inbound_qty]));
 
-    // 오늘 입고 저장분 (수량칸 복원용)
-    const todayIn=rest.find(r=>r.d===on)?.inbound||[];
-    const saved=new Map(todayIn.filter(x=>x.inbound_qty>0).map(x=>[x.item_id,x.inbound_qty]));
-    savedMap=saved;
-
-    // 표시 대상: 도착예정일이 오늘 이하 && 아직 다 안 들어온(누적발주>누적입고) 품목
-    const pending=items.filter(i=>{
-      const oq=orderedQty[i.item_id];
-      if(!oq)return false;
-      if(saved.has(i.item_id))return false;              // 오늘 이미 입고 처리함
-      if((recvQty[i.item_id]||0)>=oq-1e-6)return false;  // 누적 입고가 발주 이상 → 완료
-      return arrivalBy[i.item_id]<=on;                    // 도착예정일 도래
-    });
-    window._expMap=orderedQty; window._arrMap=arrivalBy;
-    pending.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
-    if(!pending.length){$("#items").innerHTML="<div class='hint' style='padding:16px 0'>입고할 발주 품목이 없어요. 추가로 들어온 건 '수동 입고'로 등록하세요.</div>";}
-    else $("#items").innerHTML=pending.map(i=>{
-      const exp=window._expMap[i.item_id]||null;
-      const arr=window._arrMap[i.item_id];
-      const v=saved.has(i.item_id)?saved.get(i.item_id):"";
-      return `<div class="card${v!==""?" filled":""}" data-id="${i.item_id}" data-name="${i.name}" data-sup="${(i.supplier||'미지정').toUpperCase()}" data-exp="${exp??""}">
-        <div><div class="name">${i.name}</div>
-          <div class="meta">${exp?`예상 입고 ${exp} ${i.stock_unit}${arr&&arr<on?` · <span style="color:var(--warn)">지연(예정 ${arr.slice(5)})</span>`:""}`:"발주 없음"}</div>
-          ${exp?`<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--green-d);margin-top:4px">
-            <input type="checkbox" class="okChk" ${v!==""&&+v===exp?"checked":""} style="width:19px;height:19px;accent-color:var(--green)">발주대로 입고 ✓</label>`:""}</div>
-        <div class="qtywrap"><input class="qty num" inputmode="decimal" placeholder="${exp??"—"}" value="${v}">
-          <span class="u">${i.stock_unit}</span></div>
-      </div>`;
-    }).join("");
+    if(!pending.length){
+      $("#items").innerHTML="<div class='hint' style='padding:16px 0'>입고할 발주가 없어요. 추가로 들어온 건 '수동 입고'로 등록하세요.</div>";
+    }else{
+      $("#items").innerHTML=pending.map(p=>{
+        const it=itMap[p.item_id]||{};
+        const su=it.stock_unit||"";
+        const rem=p.remaining_qty;               // 재고단위 잔여
+        const partial=p.status==="부분입고";
+        return `<div class="card" data-oiid="${p.order_item_id}" data-id="${p.item_id}" data-name="${p.item_name}" data-sup="${(p.supplier||'미지정').toUpperCase()}" data-exp="${rem}">
+          <div><div class="name">${p.item_name}</div>
+            <div class="meta">발주 ${p.ordered_qty}${p.unit||""} · ${p.supplier||"미지정"}${partial?` · <span style="color:var(--warn)">부분입고 남음 ${rem}</span>`:""}</div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--green-d);margin-top:4px">
+              <input type="checkbox" class="okChk" style="width:19px;height:19px;accent-color:var(--green)">발주대로 입고 ✓ (${rem}${su})</label></div>
+          <div class="qtywrap"><input class="qty num" inputmode="decimal" placeholder="${rem}" value="">
+            <span class="u">${su}</span></div>
+        </div>`;
+      }).join("");
+    }
     document.querySelectorAll(".card .qty").forEach(q=>q.addEventListener("input",
       e=>{const c=e.target.closest(".card");c.classList.toggle("filled",e.target.value.trim()!=="");
         const k=c.querySelector(".okChk");if(k)k.checked=(+e.target.value===+c.dataset.exp);}));
@@ -221,7 +197,7 @@ async function load(){
       c.classList.toggle("filled",q.value!=="");
     }));
     $("#thumbs").innerHTML=recs.map(r=>`<div class="thumb"><img src="${r.image_url}"><span class="del" onclick="delR(${r.id})">✕</span></div>`).join("");
-    const sups=["전체",...new Set(items.map(i=>(i.supplier||"미지정").toUpperCase()))];
+    const sups=["전체",...new Set(pending.map(p=>(p.supplier||"미지정").toUpperCase()))];
     $("#chips").innerHTML=sups.map(s=>`<div class="chip${s===filterSup?" on":""}" data-s="${s}">${s}</div>`).join("");
     $("#chips").querySelectorAll(".chip").forEach(c=>c.onclick=()=>{filterSup=c.dataset.s;
       $("#chips").querySelectorAll(".chip").forEach(x=>x.classList.toggle("on",x===c));applyF();});
@@ -261,19 +237,21 @@ $("#camInput").onchange=async e=>{
 
 $("#saveBtn").onclick=async()=>{
   const btn=$("#saveBtn");btn.disabled=true;btn.textContent="저장 중…";
-  const lines=[...document.querySelectorAll("#items .card")].map(c=>{
-    const q=c.querySelector(".qty");
-    if(!q)return null;
-    const v=q.value.trim();
-    return v===""?null:{item_id:+c.dataset.id,inbound_qty:parseFloat(v)||0};
-  }).filter(Boolean);
+  const lines=[], deltas=[];
+  [...document.querySelectorAll("#items .card")].forEach(c=>{
+    const q=c.querySelector(".qty"); if(!q)return;
+    const v=q.value.trim(); if(v==="")return;
+    const rq=parseFloat(v)||0; if(rq<=0)return;
+    lines.push({order_item_id:c.dataset.oiid||null,item_id:+c.dataset.id,received_qty:rq});
+    deltas.push({item_id:+c.dataset.id,delta:rq});
+  });
   if(!lines.length){toast("입력된 입고가 없어요",1);btn.disabled=false;btn.textContent="입고 저장";return;}
   try{
-    const r=await fetch(API+"/inbound/save",{method:"POST",
+    const r=await fetch(API+"/inbounds/save",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({store_id:STORE,date:$("#date").value,lines})}).then(r=>r.json());
-    toast(`입고 저장 완료 (${r.saved}품목) · 재고에 반영됨`);
-    bumpDraft(lines.map(l=>({item_id:l.item_id,delta:l.inbound_qty})));
+      body:JSON.stringify({store_id:STORE,received_at:$("#date").value,lines})}).then(r=>r.json());
+    toast(`입고 저장 완료 (${r.saved}품목) · 재고 반영`);
+    bumpDraft(deltas);
     load();
   }catch(e){toast("저장 실패",1);}
   finally{btn.disabled=false;btn.textContent="입고 저장";}
@@ -309,11 +287,10 @@ window.saveManual=async(id,btn)=>{
   if(!q){toast("수량을 입력하세요",1);return;}
   btn.disabled=true;
   try{
-    // 기존 오늘 입고분에 합산
-    const prev=savedMap.get(id)||0;
-    await fetch(API+"/inbound/save",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({store_id:STORE,date:$("#date").value,lines:[{item_id:id,inbound_qty:prev+q}]})});
-    toast("수동 입고 등록 완료 · 재고에 반영됨");
+    await fetch(API+"/inbounds/save",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({store_id:STORE,received_at:$("#date").value,
+        lines:[{order_item_id:null,item_id:id,received_qty:q}]})});
+    toast("수동 입고 등록 완료 · 재고 반영");
     bumpDraft([{item_id:id,delta:q}]);
     inp.value="";btn.disabled=false;
     load();
@@ -396,8 +373,9 @@ window.applyOcr=async()=>{
   });
   d.close();
   if(direct.length){
-    await fetch(API+"/inbound/save",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({store_id:STORE,date:$("#date").value,lines:direct})});
+    await fetch(API+"/inbounds/save",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({store_id:STORE,received_at:$("#date").value,
+        lines:direct.map(l=>({order_item_id:null,item_id:l.item_id,received_qty:l.inbound_qty}))})});
     bumpDraft(direct.map(l=>({item_id:l.item_id,delta:l.inbound_qty})));
   }
   toast(`${n}건 적용${direct.length?` (${direct.length}건 바로 입고)`:""}`);
@@ -447,8 +425,9 @@ window.doMatch=async(btn,i)=>{
   const c=document.querySelector(`#items .card[data-id="${sel.value}"]`);
   if(c){c.querySelector(".qty").value=r.qty;c.classList.add("filled");}
   else{
-    await fetch(API+"/inbound/save",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({store_id:STORE,date:$("#date").value,lines:[{item_id:+sel.value,inbound_qty:r.qty}]})});
+    await fetch(API+"/inbounds/save",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({store_id:STORE,received_at:$("#date").value,
+        lines:[{order_item_id:null,item_id:+sel.value,received_qty:r.qty}]})});
     bumpDraft([{item_id:+sel.value,delta:r.qty}]);
   }
   btn.textContent="완료";toast("매칭 저장 — 다음부터 자동 인식");
