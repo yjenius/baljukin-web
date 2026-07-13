@@ -301,35 +301,29 @@ window.saveManual=async(id,btn)=>{
 $("#histBtn").onclick=async()=>{
   const showing=$("#histView").style.display!=="none";
   if(showing){$("#histView").style.display="none";$("#items").style.display="";$("#histBtn").textContent="오늘 입고 내역";$("#saveBtn").style.display="";return;}
-  const rows=(await fetch(`${API}/inbound?store_id=${STORE}&on=${$("#date").value}`).then(r=>r.json())).filter(r=>r.inbound_qty>0);
-  const nm=Object.fromEntries(itemsAll.map(i=>[i.item_id,i]));
+  const rows=await fetch(`${API}/inbounds/today?store_id=${STORE}&on=${$("#date").value}`).then(r=>r.json());
   if(!rows.length){$("#histView").innerHTML="<div class='hint' style='padding:16px 0'>오늘 입고된 품목이 없어요.</div>";}
-  else $("#histView").innerHTML=rows.map(r=>{const it=nm[r.item_id]||{};
-    return `<div class="card"><div><div class="name">${it.name||r.item_id}</div>
-      <div class="meta">${it.stock_unit||""}</div></div>
+  else $("#histView").innerHTML=rows.map(r=>
+    `<div class="card"><div><div class="name">${r.item_name}</div>
+      <div class="meta">${r.received_qty}${r.stock_unit||""} · ${r.matched?"발주 입고":"수동/사입"}</div></div>
       <div class="qtywrap">
-        <input class="hQty num" data-id="${r.item_id}" data-old="${r.inbound_qty}" inputmode="decimal" value="${r.inbound_qty}"
-          style="width:80px;text-align:right;border:1px solid var(--line);border-radius:10px;padding:9px">
-        <button class="btn" style="padding:9px 12px;font-size:14px" onclick="editInb(${r.item_id},this)">저장</button>
-        <button class="btn ghost" style="padding:9px 12px;font-size:14px" onclick="editInb(${r.item_id},this,true)">삭제</button>
-      </div></div>`;}).join("");
+        <button class="btn ghost" style="padding:9px 12px;font-size:14px" onclick="delInb('${r.inbound_item_id}',${r.item_id},${r.received_qty},this)">삭제</button>
+      </div></div>`).join("");
   $("#histView").style.display="";$("#items").style.display="none";$("#histBtn").textContent="◀ 발주 입고로";
   $("#saveBtn").style.display="none";
 };
-window.editInb=async(id,btn,del)=>{
-  const inp=btn.closest(".qtywrap").querySelector(".hQty");
-  const q=del?0:parseFloat(inp.value)||0;
-  const delta=q-(parseFloat(inp.dataset.old)||0);
+// 입고 줄 삭제 → 발주 상태 자동 롤백 + 재고 차감. 수정은 삭제 후 재입고.
+window.delInb=async(iid,itemId,qty,btn)=>{
+  if(!confirm("이 입고를 삭제할까요? (발주 상태가 다시 미완료로 돌아갑니다)"))return;
   btn.disabled=true;
   try{
-    await fetch(API+"/inbound/save",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({store_id:STORE,date:$("#date").value,lines:[{item_id:id,inbound_qty:q}]})});
-    bumpDraft([{item_id:id,delta}]);
-    toast(del?"삭제 완료 · 재고에서 차감":"수정 완료 · 재고에 반영");
+    await fetch(API+"/inbound_items/"+iid,{method:"DELETE"});
+    bumpDraft([{item_id:itemId,delta:-qty}]);
+    toast("삭제 완료 · 재고 차감 · 발주 미완료로 복귀");
     await load();
-    $("#histView").style.display="none";$("#items").style.display="";$("#histBtn").textContent="오늘 입고 내역";$("#saveBtn").style.display="";
-    $("#histBtn").click();
-  }catch(e){toast("실패",1);btn.disabled=false;}
+    $("#histBtn").click();  // 목록 닫기
+    $("#histBtn").click();  // 다시 열어 갱신
+  }catch(e){toast("삭제 실패",1);btn.disabled=false;}
 };
 
 window.delR=async id=>{if(!confirm("사진 삭제?"))return;
