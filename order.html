@@ -123,7 +123,7 @@ async function fetchOrders(){
 }
 // 저장 직후 새 구조(orders_v2)로 동기화. 실패해도 기존 흐름엔 영향 없음.
 async function syncV2(){
-  const lines=Object.values(orderMap).filter(r=>r.order_qty>0).map(r=>({
+  const lines=Object.values(orderMap).filter(r=>r.order_qty>0&&r.status==="주문완료").map(r=>({
     item_id:r.item_id,item_name:r.item_name,supplier:r.supplier,
     order_qty:r.order_qty,order_unit:r.order_unit}));
   try{await fetch(API+"/orders/v2/sync",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -204,7 +204,7 @@ $("#addBtn").onclick=async()=>{
   try{
     await fetch(API+"/orders/save",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({store_id:STORE,date:$("#date").value,lines})});
-    await fetchOrders();await syncV2();renderPick();
+    await fetchOrders();renderPick();
     toast(`🛒 ${lines.filter(l=>l.order_qty>0).length}품목 담았어요`);
   }catch(e){toast("담기 실패",1);}
   finally{btn.disabled=false;}
@@ -253,7 +253,9 @@ async function saveCart(status,doneMsg){
   try{
     await fetch(API+"/orders/save",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({store_id:STORE,date:$("#date").value,lines})});
-    await fetchOrders();await syncV2();renderCart();
+    await fetchOrders();
+    if(status==="주문완료")await syncV2();  // 확정(주문하기) 시에만 발주 생성
+    renderCart();
     toast(doneMsg);
   }catch(e){toast("저장 실패",1);}
 }
