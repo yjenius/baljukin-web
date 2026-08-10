@@ -304,6 +304,53 @@ $("#byPart").onclick=()=>{chipMode="part";filterPart="전체";
 $("#bySup").onclick=()=>{chipMode="supplier";filterPart="전체";
   $("#bySup").classList.add("on");$("#byPart").classList.remove("on");buildChips();applyFilter();};
 
+/* ── 벌크 "새 통 오픈" (조각f). staff도 사용 가능. 재고 숫자와 별개 이벤트 기록. ── */
+let todayRepl={};  // item_id -> {id, packs}  (오늘자 stock_replacements)
+async function loadReplacements(){
+  todayRepl={};
+  try{
+    const r=await sbFetch(`/stock_replacements?store_id=eq.${$("#store").value}&opened_on=eq.${$("#date").value}&select=id,item_id,packs`);
+    if(r.ok)(await r.json()).forEach(x=>{todayRepl[x.item_id]={id:x.id,packs:x.packs};});
+  }catch(e){}
+  refreshBulkBtns();
+}
+function refreshBulkBtns(){
+  document.querySelectorAll(".bulkwrap").forEach(w=>{
+    const id=+w.dataset.id, t=todayRepl[id], n=t?t.packs:0;
+    w.innerHTML = n>0
+      ? `<span style="font-size:13px;color:var(--green);font-weight:700">🛢 오늘 새 통 ${n}개 ✓</span>
+         <button class="bulkPlus" style="border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 10px;font-size:13px;cursor:pointer">+통</button>
+         <button class="bulkMinus" style="border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 11px;font-size:13px;cursor:pointer">−</button>`
+      : `<button class="bulkPlus" style="border:1px solid var(--line);background:#fbfaf5;border-radius:9px;padding:7px 12px;font-size:13px;font-weight:700;color:var(--green);cursor:pointer">🛢 새 통 오픈</button>`;
+    w.querySelector(".bulkPlus").onclick=()=>bulkOpen(id,false);
+    const m=w.querySelector(".bulkMinus"); if(m)m.onclick=()=>bulkOpen(id,true);
+  });
+}
+async function bulkOpen(id,dec){
+  const cur=todayRepl[id];
+  try{
+    if(!cur){
+      if(dec)return;
+      const row={store_id:+$("#store").value,item_id:id,opened_on:$("#date").value,packs:1};
+      if(currentStaff) row.staff_id=currentStaff.staff_id;
+      const r=await sbFetch("/stock_replacements",
+        {method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify([row])});
+      if(r.ok){const x=(await r.json())[0];todayRepl[id]={id:x.id,packs:x.packs};toast("새 통 1개 기록 · 교체주기 반영");}
+      else{toast("기록 실패",1);}
+    }else{
+      const np=cur.packs+(dec?-1:1);
+      if(np<=0){
+        await sbFetch(`/stock_replacements?id=eq.${cur.id}`,{method:"DELETE"});
+        delete todayRepl[id]; toast("새 통 기록 취소");
+      }else{
+        await sbFetch(`/stock_replacements?id=eq.${cur.id}`,{method:"PATCH",body:JSON.stringify({packs:np})});
+        todayRepl[id]={id:cur.id,packs:np}; toast(`오늘 새 통 ${np}개`);
+      }
+    }
+  }catch(e){toast("기록 실패",1);}
+  refreshBulkBtns();
+}
+
 function renderItems(){
   const draft=JSON.parse(localStorage.getItem(draftKey())||"{}");
   $("#items").className="";
@@ -315,6 +362,7 @@ function renderItems(){
       <div>
         <div class="name">${i.name}</div>
         <div class="meta"><span class="tag">${pt}</span>${st?`<span>${st}</span>`:""}${i.location?`<span>위치 ${i.location}</span>`:""}<span class="prev" data-prev="${i.item_id}"></span></div>
+        ${i.is_bulk?`<div class="bulkwrap" data-id="${i.item_id}" style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"></div>`:""}
       </div>
       <div class="qtywrap">
         <input class="qty num" inputmode="decimal" placeholder="—" value="${d.qty??""}" aria-label="${i.name}">
@@ -336,7 +384,7 @@ function renderItems(){
     if(so.checked)c.classList.add("out");
     if(qty.value.trim()!=="")c.classList.add("filled");
   });
-  applyFilter(); updProg(); loadPrev().then(loadShared);
+  applyFilter(); updProg(); loadPrev().then(loadShared); loadReplacements();
 }
 
 /* 다른 폰/직원이 저장한 재고 불러와 표시용 병합 (Phase3 조각3, location=null 기준)
