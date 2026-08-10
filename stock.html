@@ -217,7 +217,7 @@ function draftKey(){return `draft:${$("#store").value}:${$("#date").value}`;}
 
 /* ── 입력자(직원) 선택 — Phase3 조각2. store_staff 활성 직원 이름 탭 선택 ──
    staff_id는 직원이 실제 선택됐을 때만 저장에 실린다(미적용/미등록이면 기존 동작 유지). */
-let myProfile=null, staffList=[], currentStaff=null;
+let myProfile=null, staffList=[], currentStaff=null, isAdmin=false;
 async function getProfile(){
   for(let i=0;i<20 && !window.sbAuth;i++) await new Promise(r=>setTimeout(r,250));
   if(!window.sbAuth) return null;
@@ -229,9 +229,14 @@ async function getProfile(){
 }
 async function bindStore(){                     // #store를 공용계정 profiles.store_id로 자동 바인딩
   myProfile=await getProfile();
+  isAdmin = !!(myProfile && myProfile.role==="admin");   // role null → staff(최소권한)
   if(myProfile && myProfile.store_id!=null){
     const opt=[...$("#store").options].find(o=>+o.value===+myProfile.store_id);
     if(opt) $("#store").value=myProfile.store_id;
+  }
+  if(!isAdmin){                                  // staff: 관리자 기능 숨김(UX 게이팅)
+    $("#fab").style.display="none";              // 새 품목 등록
+    $("#loadOrder").style.display="none";        // 오늘 발주 불러오기
   }
 }
 async function loadStaff(){
@@ -757,14 +762,17 @@ async function openHist(id,name){
     const r=await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&item_id=eq.${id}&order=date.desc&limit=14&select=date,stock_qty,is_carried,is_stockout`);
     const rows=r.ok?await r.json():[];
     if(!rows.length){$("#histList").innerHTML="<div style='color:var(--muted);padding:12px 0'>기록이 없어요</div>";return;}
+    // 관리자만 편집(daily_stock PATCH). staff는 조회 전용.
     $("#histList").innerHTML=rows.map(x=>`
       <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)">
         <span style="flex:1;font-size:14px">${x.date}${x.is_carried?' <span style="font-size:11px;color:var(--muted)">(자동)</span>':""}${x.is_stockout?' <span style="font-size:11px;color:var(--warn)">검토</span>':""}</span>
-        <input class="hq num" data-d="${x.date}" inputmode="decimal" value="${x.stock_qty}"
-          style="width:70px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:8px">
-        <button class="btn sm" style="flex:0;padding:8px 12px;font-size:13px" data-d="${x.date}">저장</button>
+        ${isAdmin
+          ? `<input class="hq num" data-d="${x.date}" inputmode="decimal" value="${x.stock_qty}"
+              style="width:70px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:8px">
+             <button class="btn sm" style="flex:0;padding:8px 12px;font-size:13px" data-d="${x.date}">저장</button>`
+          : `<span class="num" style="font-weight:700;min-width:70px;text-align:right">${x.stock_qty}</span>`}
       </div>`).join("");
-    $("#histList").querySelectorAll("button").forEach(b=>b.onclick=async()=>{
+    if(isAdmin) $("#histList").querySelectorAll("button").forEach(b=>b.onclick=async()=>{
       const inp=$("#histList").querySelector(`.hq[data-d="${b.dataset.d}"]`);
       const v=parseFloat(inp.value);
       if(isNaN(v)){toast("숫자를 입력하세요",1);return;}

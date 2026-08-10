@@ -72,6 +72,7 @@ else{
   try{ const {data:p}=await sbA.from("profiles").select("role,store_id").eq("id",session.user.id).single();
     window.myRole=p?.role||null; window.myStore=(p&&p.store_id!=null)?p.store_id:null; }
   catch(e){ window.myRole=null; }
+  if(window.myRole!=="admin") location.href="index.html";   // staff 직접진입 차단(UX 게이팅)
 }
 </script>
 

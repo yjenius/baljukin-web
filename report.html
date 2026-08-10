@@ -37,7 +37,12 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 const sbA=createClient("https://uisdezsmyknmwayexhbu.supabase.co","sb_publishable_18Z8F9WYbJkbmFGIumZdKA_f6YGy9po");
 const {data:{session}}=await sbA.auth.getSession();
-if(!session)location.href="index.html";
+if(!session){location.href="index.html";}
+else{   // 관리자 전용 — staff/미설정 직접진입 차단(UX 게이팅). 진짜 경계는 Phase4 RLS.
+  try{ const {data:p}=await sbA.from("profiles").select("role").eq("id",session.user.id).single();
+    if(!(p&&p.role==="admin")) location.href="index.html"; }
+  catch(e){ location.href="index.html"; }
+}
 window.sbToken=session?.access_token||null;
 </script>
 
