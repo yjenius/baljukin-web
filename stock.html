@@ -334,20 +334,40 @@ function renderItems(){
   applyFilter(); updProg(); loadPrev().then(loadShared);
 }
 
-/* 다른 폰에서 저장한 재고 불러오기 */
+/* 다른 폰/직원이 저장한 재고 불러와 표시용 병합 (Phase3 조각3, location=null 기준)
+   개수형: 최신(created_at) 채택, 편차 크면 충돌 배지. 벌크형: 평균. */
 async function loadShared(){
   try{
-    const r=await sbFetch(`/stock_draft?store_id=eq.${$("#store").value}&date=eq.${$("#date").value}&select=item_id,qty,so`);
+    const r=await sbFetch(`/stock_draft?store_id=eq.${$("#store").value}&date=eq.${$("#date").value}&location=is.null&select=item_id,qty,so,created_at`);
     if(!r.ok)return;
-    (await r.json()).forEach(row=>{
-      const c=document.querySelector(`.card[data-id="${row.item_id}"]`);
+    const rows=await r.json();
+    const byItem={}; rows.forEach(row=>{(byItem[row.item_id]=byItem[row.item_id]||[]).push(row);});
+    const bulkOf={}; items.forEach(i=>bulkOf[i.item_id]=!!i.is_bulk);
+    Object.keys(byItem).forEach(id=>{
+      const c=document.querySelector(`.card[data-id="${id}"]`);
       if(!c)return;
-      const qty=c.querySelector(".qty"), so=c.querySelector('input[type=checkbox]');
-      // 저장된 값이 자동채움(전일+입고)과 다르면 사람이 입력한 것 → 반영
-      const auto=prevMap[row.item_id];
-      if(row.qty!=null && +row.qty!==+auto) qty.value=row.qty;
-      if(row.so){so.checked=true;c.classList.add("out");}
-      c.classList.toggle("filled",qty.value.trim()!==""||so.checked);
+      const grp=byItem[id];
+      const qs=grp.map(x=>x.qty).filter(q=>q!=null).map(Number);
+      let merged=null, so=false, conflict=false;
+      if(bulkOf[id]){                                   // 벌크: 평균
+        if(qs.length) merged=Math.round(qs.reduce((a,b)=>a+b,0)/qs.length*100)/100;
+      }else{                                            // 개수형: 최신 채택
+        const latest=grp.slice().sort((a,b)=>(a.created_at||"").localeCompare(b.created_at||"")).pop();
+        merged=latest.qty!=null?Number(latest.qty):null; so=!!latest.so;
+        if(qs.length>=2){                               // 충돌: 절대 floor 1 + 상대 20%
+          const mx=Math.max(...qs), mn=Math.min(...qs), diff=mx-mn;
+          conflict = diff>=1 && (diff/mx)>0.2;
+        }
+      }
+      const qtyEl=c.querySelector(".qty"), soEl=c.querySelector('input[type=checkbox]');
+      const auto=prevMap[id];
+      if(merged!=null && +merged!==+auto) qtyEl.value=merged;
+      if(so){soEl.checked=true;c.classList.add("out");}
+      c.classList.toggle("filled",qtyEl.value.trim()!==""||soEl.checked);
+      const meta=c.querySelector(".meta");
+      const old=meta&&meta.querySelector(".cflag"); if(old)old.remove();
+      if(conflict && meta) meta.insertAdjacentHTML("beforeend",
+        `<span class="cflag" style="color:var(--warn);font-size:11px;margin-left:6px">⚠ 입력 불일치</span>`);
     });
     updProg();
   }catch(e){}
@@ -472,7 +492,7 @@ $("#tempBtn").onclick=async()=>{
     return o;});
   if(!lines.length){toast("입력된 항목이 없어요",1);return;}
   const btn=$("#tempBtn");btn.disabled=true;
-  const r=await sbFetch("/stock_draft?on_conflict=store_id,date,item_id",
+  const r=await sbFetch("/stock_draft?on_conflict=store_id,date,item_id,staff_id,location",
     {method:"POST",headers:{Prefer:"resolution=merge-duplicates"},body:JSON.stringify(lines)});
   btn.disabled=false;
   if(r.ok){
