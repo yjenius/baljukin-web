@@ -67,12 +67,18 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 const sbA=createClient("https://uisdezsmyknmwayexhbu.supabase.co","sb_publishable_18Z8F9WYbJkbmFGIumZdKA_f6YGy9po");
 const {data:{session}}=await sbA.auth.getSession();
-if(!session)location.href="index.html";
+if(!session){location.href="index.html";}
+else{
+  try{ const {data:p}=await sbA.from("profiles").select("role,store_id").eq("id",session.user.id).single();
+    window.myRole=p?.role||null; window.myStore=(p&&p.store_id!=null)?p.store_id:null; }
+  catch(e){ window.myRole=null; }
+}
 </script>
 
 <header>
   <div class="brand"><b>발주왕</b><span id="viewLabel">발주하기</span>
-    <a href="index.html">🏠 메인</a></div>
+    <a href="#" id="confirmEntry" style="display:none;margin-right:12px">📋 재고확정</a>
+    <a href="index.html" style="margin-left:0">🏠 메인</a></div>
   <input class="dateinput" type="date" id="date">
   <input class="search" id="search" placeholder="🔍 품목 검색" autocomplete="off">
   <div class="chips" id="chips"></div>
@@ -81,6 +87,7 @@ if(!session)location.href="index.html";
 <main id="pickView"><div id="items" class="msg">불러오는 중…</div></main>
 <main id="cartView" class="hidden"><div id="cart"></div></main>
 <main id="histView" class="hidden"><div id="hist"></div></main>
+<main id="confirmView" class="hidden"><div id="confirmList"></div></main>
 
 <div class="bar">
   <div class="inner" id="barPick">
@@ -97,6 +104,10 @@ if(!session)location.href="index.html";
     <button class="btn ghost" id="backBtn">◀ 발주로</button>
     <button class="btn" id="shareBtn">공유</button>
   </div>
+  <div class="inner hidden" id="barConfirm">
+    <button class="btn ghost" id="confBack">◀ 발주로</button>
+    <button class="btn" id="confSave">재고 확정</button>
+  </div>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -104,7 +115,7 @@ if(!session)location.href="index.html";
 const API="https://baljuking.onrender.com", STORE=1;
 const $=s=>document.querySelector(s);
 const stKo=s=>({sent:"주문완료",confirmed:"주문완료",updated:"수정완료","담김":"주문완료"}[s]||s||"주문완료");
-let items=[], filterSup="전체", orderMap={}, recMap={}, view="pick";
+let items=[], filterSup="전체", orderMap={}, recMap={}, manualSet=new Set(), view="pick";
 
 function toast(t,e){const el=$("#toast");el.textContent=t;el.className="toast show"+(e?" err":"");
   clearTimeout(el._t);el._t=setTimeout(()=>el.className="toast",2400);}
@@ -112,9 +123,12 @@ function today(){const d=new Date();return `${d.getFullYear()}-${String(d.getMon
 
 async function fetchRecs(){
   try{
-    const rows=await fetch(`${API}/recommendations?store_id=${STORE}&on=${$("#date").value}`).then(r=>r.json());
-    recMap={};rows.forEach(r=>recMap[r.item_id]=r.order_qty);
-  }catch(e){recMap={};}
+    // full=true: MANUAL(데이터부족)도 표면화 → 발주화면에 '수동' 배지
+    const rows=await fetch(`${API}/recommendations?store_id=${STORE}&on=${$("#date").value}&full=true`).then(r=>r.json());
+    recMap={};manualSet=new Set();
+    rows.forEach(r=>{ if(r.status==="OK"&&r.order_qty>0) recMap[r.item_id]=r.order_qty;
+      else if(r.status==="MANUAL") manualSet.add(r.item_id); });
+  }catch(e){recMap={};manualSet=new Set();}
 }
 async function fetchOrders(){
   const rows=await fetch(`${API}/orders?store_id=${STORE}&on=${$("#date").value}`).then(r=>r.json());
@@ -130,6 +144,48 @@ async function syncV2(){
     body:JSON.stringify({store_id:STORE,date:$("#date").value,lines})});}catch(e){}
 }
 
+// ── 재고 확정(관리자) — /stock/proposal 표시 → 수정 → /stock/confirm ──
+async function loadProposal(){
+  try{
+    const rows=await fetch(`${API}/stock/proposal?store_id=${STORE}&on=${$("#date").value}`).then(r=>r.json());
+    renderConfirm(rows); switchView("confirm");
+  }catch(e){toast("제안 불러오기 실패",1);}
+}
+function renderConfirm(rows){
+  if(!rows.length){$("#confirmList").innerHTML="<div class='msg'>오늘 직원이 입력한 재고가 없어요</div>";return;}
+  $("#confirmList").innerHTML=`<div class="total"><span>재고 확정 · ${$("#date").value}</span><span>${rows.length}품목</span></div>`+
+    rows.map(r=>{
+      const ins=r.inputs.map(i=>`${i.staff||"?"} ${i.qty==null?"-":i.qty}`).join(" · ");
+      return `<div class="card" data-id="${r.item_id}">
+        <div><div class="name">${r.name||r.item_id}${r.conflict?` <span class="badge warn">⚠ 불일치</span>`:""}</div>
+          <div class="meta"><span>${ins}</span>${r.confirmed!=null?`<span class="badge">확정 ${r.confirmed}</span>`:""}</div></div>
+        <div class="qtywrap">
+          <input class="oqty num confq" inputmode="decimal" value="${r.proposal==null?"":r.proposal}">
+          <span class="u">${r.stock_unit||""}</span></div>
+      </div>`;}).join("");
+  document.querySelectorAll("#confirmList .oqty").forEach(el=>el.addEventListener("focus",()=>el.select()));
+}
+async function doConfirm(){
+  const lines=[...document.querySelectorAll("#confirmList .card")].map(c=>{
+    const v=parseFloat(c.querySelector(".confq").value);
+    return {item_id:+c.dataset.id, stock_qty:isNaN(v)?0:v, is_stockout:false};
+  });
+  if(!lines.length){toast("확정할 재고가 없어요",1);return;}
+  const btn=$("#confSave");btn.disabled=true;
+  try{
+    const res=await fetch(`${API}/stock/confirm`,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({store_id:STORE,date:$("#date").value,lines})}).then(r=>r.json());
+    recMap={};manualSet=new Set();
+    (res.recommendations||[]).forEach(r=>{ if(r.status==="OK"&&r.order_qty>0) recMap[r.item_id]=r.order_qty;
+      else if(r.status==="MANUAL") manualSet.add(r.item_id); });
+    await fetchOrders(); renderPick(); switchView("pick");
+    toast(`✅ ${res.confirmed}품목 확정 · 추천 ${Object.keys(recMap).length} · 수동 ${manualSet.size}`);
+  }catch(e){toast("확정 실패",1);}
+  finally{btn.disabled=false;}
+}
+$("#confBack").onclick=()=>{renderPick();switchView("pick");};
+$("#confSave").onclick=doConfirm;
+
 async function init(){
   $("#date").value=today();
   try{
@@ -139,6 +195,12 @@ async function init(){
     buildChips(); renderPick();
     fetchRecs().then(renderPick);
   }catch(e){$("#items").innerHTML="<div class='msg'>서버 연결 실패 — 잠시 뒤 새로고침</div>";}
+  // 관리자만 '재고확정' 진입 노출 (role은 상단 모듈이 세팅)
+  for(let i=0;i<20 && window.myRole===undefined;i++) await new Promise(r=>setTimeout(r,150));
+  if(window.myRole==="admin"){
+    $("#confirmEntry").style.display="";
+    $("#confirmEntry").onclick=(e)=>{e.preventDefault();loadProposal();};
+  }
 }
 $("#date").onchange=async()=>{await fetchOrders();renderPick();fetchRecs().then(renderPick);};
 
@@ -165,7 +227,7 @@ function renderPick(){
     return `<div class="card${q>0?" picked":""}" data-id="${i.item_id}" data-name="${i.name}"
       data-sup="${(i.supplier||'미지정').toUpperCase()}" data-init="${q}">
       <div><div class="name">${i.name}</div>
-        <div class="meta"><span>${(i.supplier||'미지정').toUpperCase()}</span><span>${i.stock_unit}</span>${recMap[i.item_id]?`<span class="badge">추천 ${recMap[i.item_id]}</span>`:""}${o?`<span class="badge${stKo(o.status)==="주문완료"?"":" warn"}">${stKo(o.status)}</span>`:""}</div></div>
+        <div class="meta"><span>${(i.supplier||'미지정').toUpperCase()}</span><span>${i.stock_unit}</span>${recMap[i.item_id]?`<span class="badge">추천 ${recMap[i.item_id]}</span>`:(manualSet.has(i.item_id)?`<span class="badge warn">수동</span>`:"")}${o?`<span class="badge${stKo(o.status)==="주문완료"?"":" warn"}">${stKo(o.status)}</span>`:""}</div></div>
       <div class="qtywrap">
         <button class="step" data-d="-1">−</button>
         <input class="oqty num" inputmode="decimal" value="${q}">
@@ -297,10 +359,12 @@ function switchView(v){
   $("#pickView").classList.toggle("hidden",v!=="pick");
   $("#cartView").classList.toggle("hidden",v!=="cart");
   $("#histView").classList.toggle("hidden",v!=="hist");
+  $("#confirmView").classList.toggle("hidden",v!=="confirm");
   $("#barPick").classList.toggle("hidden",v!=="pick");
   $("#barCart").classList.toggle("hidden",v!=="cart");
   $("#barHist").classList.toggle("hidden",v!=="hist");
-  $("#viewLabel").textContent=v==="pick"?"발주하기":v==="cart"?"장바구니":"주문내역";
+  $("#barConfirm").classList.toggle("hidden",v!=="confirm");
+  $("#viewLabel").textContent=v==="pick"?"발주하기":v==="cart"?"장바구니":v==="hist"?"주문내역":"재고 확정";
   $("#search").style.display=v==="pick"?"":"none";
   $("#chips").style.display=v==="pick"?"":"none";
   window.scrollTo(0,0);

@@ -136,9 +136,9 @@ sbA.auth.onAuthStateChange((_e,s)=>{window.sbToken=s?.access_token||null;});
 
 <div class="bar">
   <div class="inner" id="barInput">
-    <button class="btn ghost" id="tempBtn">저장</button>
     <button class="btn ghost" id="expStock">공유</button>
-    <button class="btn" id="calcBtn">발주 계산하기</button>
+    <button class="btn" id="tempBtn">재고 저장</button>
+    <button class="btn ghost" id="calcBtn" style="font-size:13px;flex:0 0 auto;padding-left:12px;padding-right:12px">ℹ️ 발주는<br>관리자 확정</button>
   </div>
   <div class="inner hidden" id="barResult">
     <button class="btn ghost" id="backBtn">재고 수정</button>
@@ -384,19 +384,8 @@ async function sbFetch(path,opt={}){const t=await getToken();
   return fetch(SB+path,{...opt,headers:{apikey:SBKEY,Authorization:`Bearer ${t||SBKEY}`,
     "Content-Type":"application/json",...(opt.headers||{})}});}
 let prevMap={};
-async function syncDailyStock(lines){
-  try{
-    const ids=lines.map(l=>l.item_id).join(",");
-    const r=await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=eq.${$("#date").value}&item_id=in.(${ids})&select=item_id,stock_qty`);
-    if(!r.ok)return;
-    const cur=Object.fromEntries((await r.json()).map(x=>[x.item_id,parseFloat(x.stock_qty)]));
-    for(const l of lines){
-      if(cur[l.item_id]===undefined||cur[l.item_id]===l.qty)continue;
-      await sbFetch(`/daily_stock?store_id=eq.${$("#store").value}&date=eq.${$("#date").value}&item_id=eq.${l.item_id}`,
-        {method:"PATCH",body:JSON.stringify({stock_qty:l.qty,is_carried:false,is_stockout:l.so})});
-    }
-  }catch(e){}
-}
+// (조각e/D2-가) 직원 경로의 daily_stock 직접 write는 제거됨.
+// 재고 확정은 관리자가 발주화면에서 /stock/confirm으로만 수행한다.
 async function loadPrev(){
   prevMap={};
   try{
@@ -496,8 +485,7 @@ $("#tempBtn").onclick=async()=>{
     {method:"POST",headers:{Prefer:"resolution=merge-duplicates"},body:JSON.stringify(lines)});
   btn.disabled=false;
   if(r.ok){
-    sortUnfilled();toast(`서버 저장 완료 ${lines.length}건`);
-    syncDailyStock(lines);   // 확정 재고에도 반영 (그날 기록이 이미 있으면 값 갱신)
+    sortUnfilled();toast(`재고 저장 완료 ${lines.length}건 · 발주는 관리자가 확정해요`);
   }
   else{
     if(r.status===401||r.status===403)toast("저장 실패 — 로그인 만료. 메인에서 다시 로그인하세요",1);
@@ -514,21 +502,10 @@ function sortUnfilled(){
 $("#store").onchange=()=>{renderItems();loadStaff().then(()=>loadInputter(false));};
 $("#date").onchange=()=>{renderItems();loadInputter(false);};
 
-$("#calcBtn").onclick=async()=>{
-  const btn=$("#calcBtn");btn.disabled=true;btn.textContent="계산 중…";
+// (조각e/D2-가) 직원은 재고 저장만. 발주 계산·확정·daily_stock write는 관리자 몫 → 안내만.
+$("#calcBtn").onclick=()=>{
   autosave();
-  const lines=collect().map(x=>({
-    item_id:x.item_id,
-    stock_qty: x.qty===""?null:parseFloat(x.qty),
-    is_stockout:x.so
-  }));
-  reviewIds=new Set(collect().filter(x=>x.so).map(x=>x.item_id));
-  try{
-    const res=await fetch(API+"/stock-submit",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({store_id:+$("#store").value,date:$("#date").value,lines})}).then(r=>r.json());
-    lastResults=res; showResults(res);
-  }catch(e){toast("계산 실패 — 잠시 뒤 다시",1);}
-  finally{btn.disabled=false;btn.textContent="발주 계산하기";}
+  toast("재고를 저장하면 끝! 발주는 관리자가 발주화면에서 확정해요");
 };
 
 function showResults(list){
