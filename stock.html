@@ -117,6 +117,10 @@ sbA.auth.onAuthStateChange((_e,s)=>{window.sbToken=s?.access_token||null;});
     <select id="store" style="display:none"></select>
     <input class="dateinput" type="date" id="date" style="flex:1">
   </div>
+  <div id="inputterBar" style="font-size:13px;margin-top:6px;display:none">
+    <span id="inputterLabel"></span>
+    <span class="link" id="changeInputter" style="margin-left:6px"></span>
+  </div>
   <input class="search" id="search" placeholder="🔍 품목 검색" autocomplete="off">
   <div style="display:flex;gap:6px;margin-top:8px">
     <button class="chip on" id="byPart" style="cursor:pointer">파트별</button>
@@ -190,6 +194,15 @@ sbA.auth.onAuthStateChange((_e,s)=>{window.sbToken=s?.access_token||null;});
   </div>
 </div>
 
+<div class="modalbg hidden" id="inputterbg">
+  <div class="modal">
+    <h3>오늘 입력자 선택</h3>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">재고를 입력하는 본인 이름을 골라주세요.</div>
+    <div id="staffList" style="display:flex;flex-wrap:wrap"></div>
+    <div class="acts"><button class="btn ghost sm" id="inputterCancel">나중에</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -202,6 +215,59 @@ function toast(t,err){const e=$("#toast");e.textContent=t;e.className="toast sho
 function today(){return new Date().toISOString().slice(0,10);}
 function draftKey(){return `draft:${$("#store").value}:${$("#date").value}`;}
 
+/* ── 입력자(직원) 선택 — Phase3 조각2. store_staff 활성 직원 이름 탭 선택 ──
+   staff_id는 직원이 실제 선택됐을 때만 저장에 실린다(미적용/미등록이면 기존 동작 유지). */
+let myProfile=null, staffList=[], currentStaff=null;
+async function getProfile(){
+  for(let i=0;i<20 && !window.sbAuth;i++) await new Promise(r=>setTimeout(r,250));
+  if(!window.sbAuth) return null;
+  const {data:{session}}=await window.sbAuth.auth.getSession();
+  const uid=session?.user?.id; if(!uid) return null;
+  try{ const r=await sbFetch(`/profiles?id=eq.${uid}&select=store_id,role,name`);
+    if(r.ok){const a=await r.json(); return a[0]||null;} }catch(e){}
+  return null;
+}
+async function bindStore(){                     // #store를 공용계정 profiles.store_id로 자동 바인딩
+  myProfile=await getProfile();
+  if(myProfile && myProfile.store_id!=null){
+    const opt=[...$("#store").options].find(o=>+o.value===+myProfile.store_id);
+    if(opt) $("#store").value=myProfile.store_id;
+  }
+}
+async function loadStaff(){
+  staffList=[];
+  try{ const r=await sbFetch(`/store_staff?store_id=eq.${$("#store").value}&active=eq.true&select=staff_id,name&order=name`);
+    if(r.ok) staffList=await r.json(); }catch(e){}   // 테이블 없음/실패 → 빈 목록 → 게이트 미표시
+}
+function inputterKey(){return `inputter:${$("#store").value}:${$("#date").value}`;}
+function updateInputterBar(){
+  const bar=$("#inputterBar");
+  if(!staffList.length){bar.style.display="none";return;}
+  bar.style.display="block";
+  if(currentStaff){$("#inputterLabel").innerHTML=`입력자 <b>${currentStaff.name}</b>`;$("#changeInputter").textContent="변경";}
+  else{$("#inputterLabel").textContent="입력자 미선택";$("#changeInputter").textContent="선택하기";}
+}
+function openInputterGate(){
+  if(!staffList.length) return;
+  $("#staffList").innerHTML=staffList.map(s=>
+    `<button class="chip" data-id="${s.staff_id}" data-name="${s.name}" style="margin:4px;cursor:pointer">${s.name}</button>`).join("");
+  $("#staffList").querySelectorAll("button").forEach(b=>b.onclick=()=>{
+    currentStaff={staff_id:+b.dataset.id,name:b.dataset.name};
+    localStorage.setItem(inputterKey(),JSON.stringify(currentStaff));
+    updateInputterBar(); $("#inputterbg").classList.add("hidden");
+  });
+  $("#inputterbg").classList.remove("hidden");
+}
+function loadInputter(popIfNone){
+  currentStaff=null;
+  try{const s=JSON.parse(localStorage.getItem(inputterKey())||"null"); if(s&&s.staff_id)currentStaff=s;}catch(e){}
+  updateInputterBar();
+  if(staffList.length && !currentStaff && popIfNone) openInputterGate();
+}
+$("#changeInputter").onclick=openInputterGate;
+$("#inputterCancel").onclick=()=>$("#inputterbg").classList.add("hidden");
+$("#inputterbg").onclick=e=>{if(e.target.id==="inputterbg")$("#inputterbg").classList.add("hidden");};
+
 async function init(){
   $("#date").value=today();
   try{
@@ -211,7 +277,9 @@ async function init(){
     $("#store").innerHTML=stores.map(s=>`<option value="${s.store_id}">${s.name}</option>`).join("");
     items=its;                                  // item_id 순 = 엑셀 순
     items.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
+    await bindStore();                          // #store를 공용계정 매장으로 바인딩(렌더 전)
     buildChips(); renderItems();
+    await loadStaff(); loadInputter(true);      // 활성 직원 로드 → 입력자 게이트
   }catch(e){ $("#items").innerHTML="서버에 연결하지 못했어요.<br>무료 서버는 첫 접속 시 최대 1분 걸려요. 잠시 뒤 새로고침 해주세요."; }
 }
 
@@ -397,9 +465,11 @@ function autosave(){
 
 $("#tempBtn").onclick=async()=>{
   autosave();
-  const lines=collect().filter(x=>x.qty!==""||x.so).map(x=>({
-    store_id:+$("#store").value, date:$("#date").value, item_id:x.item_id,
-    qty:x.qty===""?0:parseFloat(x.qty), so:x.so}));
+  const lines=collect().filter(x=>x.qty!==""||x.so).map(x=>{
+    const o={store_id:+$("#store").value, date:$("#date").value, item_id:x.item_id,
+      qty:x.qty===""?0:parseFloat(x.qty), so:x.so};
+    if(currentStaff) o.staff_id=currentStaff.staff_id;  // 선택됐을 때만(유니크는 옛것 유지)
+    return o;});
   if(!lines.length){toast("입력된 항목이 없어요",1);return;}
   const btn=$("#tempBtn");btn.disabled=true;
   const r=await sbFetch("/stock_draft?on_conflict=store_id,date,item_id",
@@ -421,8 +491,8 @@ function sortUnfilled(){
     .forEach(c=>wrap.appendChild(c));
   window.scrollTo(0,0);
 }
-$("#store").onchange=renderItems;
-$("#date").onchange=renderItems;
+$("#store").onchange=()=>{renderItems();loadStaff().then(()=>loadInputter(false));};
+$("#date").onchange=()=>{renderItems();loadInputter(false);};
 
 $("#calcBtn").onclick=async()=>{
   const btn=$("#calcBtn");btn.disabled=true;btn.textContent="계산 중…";
