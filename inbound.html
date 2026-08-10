@@ -85,7 +85,7 @@ window.sbAuth=sbA;
   </div>
 
   <h2>② 입고 수량 (발주단위 아님, 낱개/재고단위 기준)</h2>
-  <div class="hint">입고 예정일이 된 발주가 표시돼요(당일/익일/택배 자동 구분). 택배 지연분은 입고할 때까지 남아요. 맞으면 "발주대로 입고 ✓" 체크.</div>
+  <div class="hint">발주처별로 "예, 다 왔어요"를 누르면 그 발주처 발주분이 한 번에 입고 처리돼요. 빠진 게 있으면 "아니오"로 펼쳐 개별 체크하세요.</div>
   <div style="display:flex;gap:8px;margin:0 0 10px">
     <button class="btn ghost" id="manualBtn" style="flex:1">＋ 수동 입고</button>
     <button class="btn ghost" id="histBtn" style="flex:1">오늘 입고 내역</button>
@@ -133,7 +133,7 @@ async function bumpDraft(deltas){
   }catch(e){}
 }
 const $=s=>document.querySelector(s);
-let items=[],filterSup="전체",savedMap=new Map(),itemsAll=[];
+let items=[],filterSup="전체",savedMap=new Map(),itemsAll=[],pendingBySup={},itMapG={};
 
 function toast(t,e){const el=$("#toast");el.textContent=t;el.className="toast show"+(e?" err":"");
   clearTimeout(el._t);el._t=setTimeout(()=>el.className="toast",2400);}
@@ -148,6 +148,63 @@ async function init(){
 function addDays(d,n){const [y,m,dd]=d.split("-").map(Number);const x=new Date(y,m-1,dd+n);
   return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;}
 const LOOKBACK=10;  // 택배 등 지연분까지 소급 조회
+
+// ── 발주처 패널 / 개별 카드(아니오 시) ──
+function itemCardHTML(p,it){
+  const su=(it&&it.stock_unit)||"";
+  const rem=p.remaining_qty;
+  const partial=p.status==="부분입고";
+  return `<div class="card" data-oiid="${p.order_item_id}" data-id="${p.item_id}" data-name="${p.item_name}" data-sup="${(p.supplier||'미지정').toUpperCase()}" data-exp="${rem}">
+    <div><div class="name">${p.item_name}</div>
+      <div class="meta">발주 ${p.ordered_qty}${p.unit||""} · ${p.supplier||"미지정"}${partial?` · <span style="color:var(--warn)">부분입고 남음 ${rem}</span>`:""}</div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--green-d);margin-top:4px">
+        <input type="checkbox" class="okChk" style="width:19px;height:19px;accent-color:var(--green)">발주대로 입고 ✓ (${rem}${su})</label></div>
+    <div class="qtywrap"><input class="qty num" inputmode="decimal" placeholder="${rem}" value="">
+      <span class="u">${su}</span></div>
+  </div>`;
+}
+function attachCardListeners(scope){
+  scope.querySelectorAll(".card .qty").forEach(q=>q.addEventListener("input",
+    e=>{const c=e.target.closest(".card");c.classList.toggle("filled",e.target.value.trim()!=="");
+      const k=c.querySelector(".okChk");if(k)k.checked=(+e.target.value===+c.dataset.exp);}));
+  scope.querySelectorAll(".okChk").forEach(k=>k.addEventListener("change",e=>{
+    const c=e.target.closest(".card"), q=c.querySelector(".qty");
+    q.value=e.target.checked?c.dataset.exp:"";
+    c.classList.toggle("filled",q.value!=="");}));
+}
+function panelHTML(sup,list){
+  return `<div class="panel supPanel" data-sup="${(sup||'미지정').toUpperCase()}" data-supname="${sup}">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1"><b>📦 ${sup}</b> <span style="color:var(--muted);font-size:13px">(${list.length}품목)</span></div>
+      <button class="btn yesBtn" style="width:auto;padding:10px 14px;font-size:14px">예, 다 왔어요</button>
+      <button class="btn noBtn" style="width:auto;padding:10px 14px;font-size:14px;background:#fff;color:var(--ink);border:1px solid var(--line)">아니오</button>
+    </div>
+    <div class="supItems" style="display:none;margin-top:10px"></div>
+  </div>`;
+}
+// [예] → 그 발주처 pending 전 품목을 remaining_qty로 일괄 입고(기존 /inbounds/save)
+async function confirmSupplier(sup){
+  const list=pendingBySup[sup]||[]; if(!list.length)return;
+  if(!confirm(`${sup} ${list.length}품목, 발주대로 다 입고 처리할까요?`))return;
+  const lines=list.map(p=>({order_item_id:p.order_item_id,item_id:p.item_id,received_qty:p.remaining_qty}));
+  const deltas=list.map(p=>({item_id:p.item_id,delta:p.remaining_qty}));
+  try{
+    await fetch(API+"/inbounds/save",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({store_id:STORE,received_at:$("#date").value,lines})});
+    toast(`${sup} ${list.length}품목 입고 완료 · 재고 반영`);
+    bumpDraft(deltas); load();
+  }catch(e){toast("입고 처리 실패",1);}
+}
+// [아니오] → 그 발주처만 개별 카드 펼침(토글). 입력 후 하단 "입고 저장"으로 저장.
+function expandSupplier(sup,panel){
+  const box=panel.querySelector(".supItems"), noBtn=panel.querySelector(".noBtn");
+  if(box.style.display!=="none"){ box.style.display="none"; noBtn.textContent="아니오"; return; }
+  const list=pendingBySup[sup]||[];
+  box.innerHTML=list.map(p=>itemCardHTML(p,itMapG[p.item_id]||{})).join("")+
+    `<div class="hint" style="margin-top:6px">받은 만큼 입력하고 아래 "입고 저장"을 누르세요. (빈칸은 아직 안 온 것)</div>`;
+  attachCardListeners(box);
+  box.style.display=""; noBtn.textContent="접기";
+}
 
 async function load(){
   const on=$("#date").value;
@@ -170,47 +227,34 @@ async function load(){
       .filter(x=>x.inbound_qty>0);
     savedMap=new Map(todayIn.map(x=>[x.item_id,x.inbound_qty]));
 
+    // 발주처별 그룹(위치순: pending이 이미 위치순이라 첫 등장 순서 = 위치순)
+    pendingBySup={}; itMapG=itMap;
+    const supOrder=[];
+    pending.forEach(p=>{ const s=p.supplier||"미지정";
+      (pendingBySup[s]=pendingBySup[s]||[]).push(p); if(!supOrder.includes(s))supOrder.push(s); });
     if(!pending.length){
       $("#items").innerHTML="<div class='hint' style='padding:16px 0'>입고할 발주가 없어요. 추가로 들어온 건 '수동 입고'로 등록하세요.</div>";
     }else{
-      $("#items").innerHTML=pending.map(p=>{
-        const it=itMap[p.item_id]||{};
-        const su=it.stock_unit||"";
-        const rem=p.remaining_qty;               // 재고단위 잔여
-        const partial=p.status==="부분입고";
-        return `<div class="card" data-oiid="${p.order_item_id}" data-id="${p.item_id}" data-name="${p.item_name}" data-sup="${(p.supplier||'미지정').toUpperCase()}" data-exp="${rem}">
-          <div><div class="name">${p.item_name}</div>
-            <div class="meta">발주 ${p.ordered_qty}${p.unit||""} · ${p.supplier||"미지정"}${partial?` · <span style="color:var(--warn)">부분입고 남음 ${rem}</span>`:""}</div>
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--green-d);margin-top:4px">
-              <input type="checkbox" class="okChk" style="width:19px;height:19px;accent-color:var(--green)">발주대로 입고 ✓ (${rem}${su})</label></div>
-          <div class="qtywrap"><input class="qty num" inputmode="decimal" placeholder="${rem}" value="">
-            <span class="u">${su}</span></div>
-        </div>`;
-      }).join("");
+      $("#items").innerHTML=supOrder.map(s=>panelHTML(s,pendingBySup[s])).join("");
+      document.querySelectorAll(".supPanel").forEach(panel=>{
+        const sup=panel.dataset.supname;
+        panel.querySelector(".yesBtn").onclick=()=>confirmSupplier(sup);
+        panel.querySelector(".noBtn").onclick=()=>expandSupplier(sup,panel);
+      });
     }
-    document.querySelectorAll(".card .qty").forEach(q=>q.addEventListener("input",
-      e=>{const c=e.target.closest(".card");c.classList.toggle("filled",e.target.value.trim()!=="");
-        const k=c.querySelector(".okChk");if(k)k.checked=(+e.target.value===+c.dataset.exp);}));
-    document.querySelectorAll(".okChk").forEach(k=>k.addEventListener("change",e=>{
-      const c=e.target.closest(".card"), q=c.querySelector(".qty");
-      q.value=e.target.checked?c.dataset.exp:"";
-      c.classList.toggle("filled",q.value!=="");
-    }));
     $("#thumbs").innerHTML=recs.map(r=>`<div class="thumb"><img src="${r.image_url}"><span class="del" onclick="delR(${r.id})">✕</span></div>`).join("");
-    const sups=["전체",...new Set(pending.map(p=>(p.supplier||"미지정").toUpperCase()))];
-    $("#chips").innerHTML=sups.map(s=>`<div class="chip${s===filterSup?" on":""}" data-s="${s}">${s}</div>`).join("");
-    $("#chips").querySelectorAll(".chip").forEach(c=>c.onclick=()=>{filterSup=c.dataset.s;
-      $("#chips").querySelectorAll(".chip").forEach(x=>x.classList.toggle("on",x===c));applyF();});
+    $("#chips").innerHTML="";   // 발주처 칩은 패널로 대체
     applyF();
   }catch(e){$("#items").innerHTML="서버 연결 실패. 새로고침 해주세요.";}
 }
 $("#date").onchange=load;
 function applyF(){
   const kw=$("#search").value.trim().toLowerCase();
-  document.querySelectorAll(".card").forEach(c=>{
-    const okS=filterSup==="전체"||c.dataset.sup===filterSup;
-    const okK=!kw||c.dataset.name.toLowerCase().includes(kw);
-    c.style.display=(okS&&okK)?"":"none";});
+  document.querySelectorAll(".supPanel").forEach(panel=>{
+    const sup=(panel.dataset.supname||"").toLowerCase();
+    const names=(pendingBySup[panel.dataset.supname]||[]).map(p=>(p.item_name||"").toLowerCase());
+    panel.style.display=(!kw||sup.includes(kw)||names.some(n=>n.includes(kw)))?"":"none";
+  });
 }
 $("#search").oninput=applyF;
 
