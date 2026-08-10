@@ -63,7 +63,9 @@ $("#loginBtn").onclick=async()=>{
 // (카카오 provider를 Supabase 대시보드에서 활성화해야 실제 동작)
 $("#kakaoBtn").onclick=async()=>{
   $("#err").textContent="";
-  const {error}=await sb.auth.signInWithOAuth({provider:"kakao",options:{redirectTo:location.href}});
+  // 닉네임만 요청(scopes 미지정 시 기본값에 account_email이 붙어 KOE205 발생).
+  const {error}=await sb.auth.signInWithOAuth({provider:"kakao",
+    options:{scopes:"profile_nickname",redirectTo:location.href}});
   if(error){$("#err").textContent="카카오 로그인 준비 중이에요 (설정 완료 후 사용 가능)";}
 };
 $("#outBtn").onclick=async()=>{await sb.auth.signOut();show(false);};
