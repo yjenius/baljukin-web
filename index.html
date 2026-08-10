@@ -63,7 +63,10 @@ $("#loginBtn").onclick=async()=>{
 // (카카오 provider를 Supabase 대시보드에서 활성화해야 실제 동작)
 $("#kakaoBtn").onclick=async()=>{
   $("#err").textContent="";
-  // 닉네임만 요청(scopes 미지정 시 기본값에 account_email이 붙어 KOE205 발생).
+  // 주의: GoTrue가 account_email/profile_image/profile_nickname을 기본 scope로
+  // 강제하고, 클라이언트 scopes는 '추가'만 된다(=account_email을 코드로 못 뺌).
+  // KOE205 해결은 Kakao Developers에서 '이메일'을 선택 동의로 활성화하는 것.
+  // 아래 scopes는 닉네임 요청 명시 용도로만 유지(제거 효과 없음).
   const {error}=await sb.auth.signInWithOAuth({provider:"kakao",
     options:{scopes:"profile_nickname",redirectTo:location.href}});
   if(error){$("#err").textContent="카카오 로그인 준비 중이에요 (설정 완료 후 사용 가능)";}
