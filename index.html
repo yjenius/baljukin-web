@@ -34,8 +34,6 @@ padding:18px;text-decoration:none;color:var(--ink);font-weight:700;font-size:17p
     <input id="email" type="email" placeholder="이메일" autocomplete="username">
     <input id="pw" type="password" placeholder="비밀번호" autocomplete="current-password">
     <button class="btn" id="loginBtn">로그인</button>
-    <div style="text-align:center;color:var(--muted);font-size:12px;margin:12px 0 8px">직원은 카카오로 간편 로그인</div>
-    <button class="btn" id="kakaoBtn" style="background:#FEE500;color:#191600">카카오로 로그인</button>
     <div class="err" id="err"></div>
   </div>
   <div class="menu" id="menu">
@@ -58,18 +56,6 @@ $("#loginBtn").onclick=async()=>{
   const {error}=await sb.auth.signInWithPassword({email:$("#email").value.trim(),password:$("#pw").value});
   if(error){$("#err").textContent="이메일 또는 비밀번호가 틀렸어요";return;}
   show(true);
-};
-// 직원용 카카오 로그인. 리다이렉트 후 돌아오면 위 getSession()이 메뉴를 띄운다.
-// (카카오 provider를 Supabase 대시보드에서 활성화해야 실제 동작)
-$("#kakaoBtn").onclick=async()=>{
-  $("#err").textContent="";
-  // 주의: GoTrue가 account_email/profile_image/profile_nickname을 기본 scope로
-  // 강제하고, 클라이언트 scopes는 '추가'만 된다(=account_email을 코드로 못 뺌).
-  // KOE205 해결은 Kakao Developers에서 '이메일'을 선택 동의로 활성화하는 것.
-  // 아래 scopes는 닉네임 요청 명시 용도로만 유지(제거 효과 없음).
-  const {error}=await sb.auth.signInWithOAuth({provider:"kakao",
-    options:{scopes:"profile_nickname",redirectTo:location.href}});
-  if(error){$("#err").textContent="카카오 로그인 준비 중이에요 (설정 완료 후 사용 가능)";}
 };
 $("#outBtn").onclick=async()=>{await sb.auth.signOut();show(false);};
 fetch("https://baljuking.onrender.com/stores").catch(()=>{}); // 서버 미리 깨우기
