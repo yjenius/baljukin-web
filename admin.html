@@ -66,8 +66,9 @@ const sbA=createClient("https://uisdezsmyknmwayexhbu.supabase.co","sb_publishabl
 const {data:{session}}=await sbA.auth.getSession();
 if(!session){location.href="index.html";}
 else{   // 관리자 전용 — staff/미설정 직접진입 차단(UX 게이팅). 진짜 경계는 Phase4 RLS.
-  try{ const {data:p}=await sbA.from("profiles").select("role").eq("id",session.user.id).single();
-    if(!(p&&p.role==="admin")) location.href="index.html"; }
+  try{ const {data:p}=await sbA.from("profiles").select("role,store_id").eq("id",session.user.id).single();
+    if(!(p&&p.role==="admin")) location.href="index.html";
+    else window.myStore=(p&&p.store_id!=null)?p.store_id:null; }
   catch(e){ location.href="index.html"; }
 }
 window.sbAuth=sbA;
@@ -97,6 +98,26 @@ window.sbAuth=sbA;
     · 발주단위 = 주문 기준 · 박스당 갯수 = 1박스에 몇 개 들었나(1박스 10개 → <code>10</code>)<br>
     · MOQ = 최소 발주 수량 · 배송기간 = 익일 1, 택배 2 · 발주주기 = 며칠에 한 번 발주<br>
     · 발주 계산값을 비우면 기본값(발주단위 EA·박스당 1·MOQ 1·배송 2·주기 3)으로 들어가요. 나중에 수정 가능.
+  </div>
+
+  <h2>직원 관리</h2>
+  <div class="panel">
+    <div class="row" style="margin-bottom:12px">
+      <input id="staffName" class="f" placeholder="직원 이름" autocomplete="off">
+      <button class="btn" id="staffAdd">+ 추가</button>
+    </div>
+    <div style="overflow-x:auto"><table id="staffTbl"><tbody><tr><td class="hint">불러오는 중…</td></tr></tbody></table></div>
+    <div class="hint">삭제 대신 <b>비활성</b>으로 처리돼요(과거 입력 기록 보존). 비활성 직원은 재고입력의 입력자 선택에서 안 떠요.</div>
+  </div>
+
+  <h2>장소 관리</h2>
+  <div class="panel">
+    <div class="row" style="margin-bottom:12px">
+      <input id="locName" class="f" placeholder="장소 이름 (예: 보관 / 해동 / 사용)" autocomplete="off">
+      <button class="btn" id="locAdd">+ 추가</button>
+    </div>
+    <div style="overflow-x:auto"><table id="locTbl"><tbody><tr><td class="hint">불러오는 중…</td></tr></tbody></table></div>
+    <div class="hint">삭제 대신 <b>비활성</b>으로 처리돼요. 비활성 장소는 재고입력의 '장소 나누기' 칸에서 안 떠요.</div>
   </div>
 </main>
 
@@ -315,6 +336,52 @@ $("#uploadBtn").onclick=async()=>{
 };
 
 $("#search").oninput=render;
+
+// ── 직원/장소 관리 (store_staff · store_locations, 직접 PostgREST) ──
+async function waitStore(){ for(let i=0;i<25 && window.myStore===undefined;i++) await new Promise(r=>setTimeout(r,120)); return window.myStore||1; }
+function mgr(cfg){   // {table, idcol, tbl, addBtn, nameInp, unit}
+  async function load(){
+    const store=await waitStore();
+    const {data,error}=await window.sbAuth.from(cfg.table)
+      .select(`${cfg.idcol},name,active`).eq("store_id",store).order(cfg.idcol);
+    const t=$("#"+cfg.tbl);
+    if(error){t.innerHTML=`<tbody><tr><td class='hint'>불러오기 실패: ${error.message}</td></tr></tbody>`;return;}
+    if(!data.length){t.innerHTML=`<tbody><tr><td class='hint'>아직 ${cfg.unit}이 없어요. 위에서 추가하세요.</td></tr></tbody>`;return;}
+    t.innerHTML="<thead><tr><th>이름</th><th>상태</th><th></th></tr></thead><tbody>"+data.map(r=>`
+      <tr data-id="${r[cfg.idcol]}" data-name="${r.name}" data-active="${r.active}">
+        <td><span class="nm">${r.name}</span></td>
+        <td>${r.active?'<span class="badge">활성</span>':'<span class="badge" style="background:#f0e6e4;color:var(--warn)">비활성</span>'}</td>
+        <td><div class="acts">
+          <button class="btn ghost sm ren">이름수정</button>
+          <button class="btn ${r.active?'danger':'ghost'} sm tog">${r.active?'비활성화':'활성화'}</button>
+        </div></td></tr>`).join("")+"</tbody>";
+    t.querySelectorAll("tr[data-id]").forEach(tr=>{
+      const id=+tr.dataset.id;
+      tr.querySelector(".ren").onclick=async()=>{
+        const nm=prompt("새 이름", tr.dataset.name); if(nm==null)return;
+        const name=nm.trim(); if(!name)return;
+        const {error}=await window.sbAuth.from(cfg.table).update({name}).eq(cfg.idcol,id);
+        toast(error?("실패: "+error.message):"이름 변경됨",error?1:0); load();
+      };
+      tr.querySelector(".tog").onclick=async()=>{
+        const cur=tr.dataset.active==="true";
+        const {error}=await window.sbAuth.from(cfg.table).update({active:!cur}).eq(cfg.idcol,id);
+        toast(error?("실패: "+error.message):(cur?"비활성화됨":"활성화됨"),error?1:0); load();
+      };
+    });
+  }
+  $("#"+cfg.addBtn).onclick=async()=>{
+    const name=$("#"+cfg.nameInp).value.trim(); if(!name){toast("이름을 입력하세요",1);return;}
+    const store=await waitStore();
+    const {error}=await window.sbAuth.from(cfg.table).insert({store_id:store,name});
+    if(error){toast(error.code==="23505"?"이미 있는 이름이에요(비활성이면 활성화하세요)":"추가 실패: "+error.message,1);return;}
+    $("#"+cfg.nameInp).value=""; toast("추가됨"); load();
+  };
+  $("#"+cfg.nameInp).addEventListener("keydown",e=>{if(e.key==="Enter")$("#"+cfg.addBtn).click();});
+  return {load};
+}
+mgr({table:"store_staff",   idcol:"staff_id",tbl:"staffTbl",addBtn:"staffAdd",nameInp:"staffName",unit:"직원"}).load();
+mgr({table:"store_locations",idcol:"id",     tbl:"locTbl",  addBtn:"locAdd",  nameInp:"locName",  unit:"장소"}).load();
 
 load();
 </script>
