@@ -120,8 +120,6 @@ sbA.auth.onAuthStateChange((_e,s)=>{window.sbToken=s?.access_token||null;});
   <div id="inputterBar" style="font-size:13px;margin-top:6px;display:none">
     <span id="inputterLabel"></span>
     <span class="link" id="changeInputter" style="margin-left:6px"></span>
-    <span id="locLabel" style="margin-left:12px"></span>
-    <span class="link" id="changeLoc" style="margin-left:6px"></span>
   </div>
   <input class="search" id="search" placeholder="🔍 품목 검색" autocomplete="off">
   <div style="display:flex;gap:6px;margin-top:8px">
@@ -205,15 +203,6 @@ sbA.auth.onAuthStateChange((_e,s)=>{window.sbToken=s?.access_token||null;});
   </div>
 </div>
 
-<div class="modalbg hidden" id="locbg">
-  <div class="modal">
-    <h3>입력 장소 선택</h3>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">지금 세는 장소를 고르세요. 여러 장소로 나뉜 품목은 장소별로 입력하면 합산됩니다.</div>
-    <div id="locList" style="display:flex;flex-wrap:wrap"></div>
-    <div class="acts"><button class="btn ghost sm" id="locCancel">닫기</button></div>
-  </div>
-</div>
-
 <div class="toast" id="toast"></div>
 
 <script>
@@ -229,7 +218,7 @@ function draftKey(){return `draft:${$("#store").value}:${$("#date").value}`;}
 /* ── 입력자(직원) 선택 — Phase3 조각2. store_staff 활성 직원 이름 탭 선택 ──
    staff_id는 직원이 실제 선택됐을 때만 저장에 실린다(미적용/미등록이면 기존 동작 유지). */
 let myProfile=null, staffList=[], currentStaff=null, isAdmin=false;
-let storeLocs=[], currentLocation=null;   // 조각4: 매장 장소 목록 / 현재 입력 장소(null=미지정)
+let storeLocs=[], expandedSet=new Set();   // 조각4: 매장 장소목록 / '장소 나누기' 펼친 품목ID
 async function getProfile(){
   for(let i=0;i<20 && !window.sbAuth;i++) await new Promise(r=>setTimeout(r,250));
   if(!window.sbAuth) return null;
@@ -257,44 +246,36 @@ async function loadStaff(){
     if(r.ok) staffList=await r.json(); }catch(e){}   // 테이블 없음/실패 → 빈 목록 → 게이트 미표시
 }
 function inputterKey(){return `inputter:${$("#store").value}:${$("#date").value}`;}
-function locKey(){return `location:${$("#store").value}:${$("#date").value}`;}
 function updateInputterBar(){
   const bar=$("#inputterBar");
-  if(!staffList.length && !storeLocs.length){bar.style.display="none";return;}
+  if(!staffList.length){bar.style.display="none";return;}
   bar.style.display="block";
-  if(staffList.length){
-    if(currentStaff){$("#inputterLabel").innerHTML=`입력자 <b>${currentStaff.name}</b>`;$("#changeInputter").textContent="변경";}
-    else{$("#inputterLabel").textContent="입력자 미선택";$("#changeInputter").textContent="선택하기";}
-  }else{$("#inputterLabel").textContent="";$("#changeInputter").textContent="";}
-  if(storeLocs.length){
-    $("#locLabel").innerHTML=`장소 <b>${currentLocation||"미지정"}</b>`;$("#changeLoc").textContent="변경";
-  }else{$("#locLabel").textContent="";$("#changeLoc").textContent="";}
+  if(currentStaff){$("#inputterLabel").innerHTML=`입력자 <b>${currentStaff.name}</b>`;$("#changeInputter").textContent="변경";}
+  else{$("#inputterLabel").textContent="입력자 미선택";$("#changeInputter").textContent="선택하기";}
 }
 async function loadStoreLocations(){
   storeLocs=[];
   try{ const r=await sbFetch(`/store_locations?store_id=eq.${$("#store").value}&active=eq.true&select=name&order=id`);
     if(r.ok) storeLocs=(await r.json()).map(x=>x.name); }catch(e){}
 }
-function loadLocation(){
-  currentLocation=null;
-  try{const v=localStorage.getItem(locKey()); if(v) currentLocation=v;}catch(e){}
-  updateInputterBar();
-}
-function openLocGate(){
-  const chips=["미지정",...storeLocs];
-  $("#locList").innerHTML=chips.map(n=>
-    `<button class="chip${(n==="미지정"?!currentLocation:n===currentLocation)?" on":""}" data-loc="${n}" style="margin:4px;cursor:pointer">${n}</button>`).join("");
-  $("#locList").querySelectorAll("button").forEach(b=>b.onclick=()=>{
-    const n=b.dataset.loc;
-    currentLocation=(n==="미지정")?null:n;
-    if(currentLocation) localStorage.setItem(locKey(),currentLocation); else localStorage.removeItem(locKey());
-    updateInputterBar(); $("#locbg").classList.add("hidden"); loadShared();  // 새 장소 기준 프리필 갱신
-  });
-  $("#locbg").classList.remove("hidden");
-}
-$("#changeLoc").onclick=openLocGate;
-$("#locCancel").onclick=()=>$("#locbg").classList.add("hidden");
-$("#locbg").onclick=e=>{if(e.target.id==="locbg")$("#locbg").classList.add("hidden");};
+/* 품목별 '장소 나누기' 펼침 상태 기억(매장 단위, 날짜 무관 — 품목 특성) */
+function expandedKey(){return `loc-expanded:${$("#store").value}`;}
+function loadExpanded(){ try{expandedSet=new Set(JSON.parse(localStorage.getItem(expandedKey())||"[]"));}catch(e){expandedSet=new Set();} }
+function saveExpanded(){ localStorage.setItem(expandedKey(), JSON.stringify([...expandedSet])); }
+function updSum(c){ const b=c.querySelector(".lsum"); if(!b)return;
+  let s=0; c.querySelectorAll(".lq").forEach(i=>{const v=parseFloat(i.value); if(!isNaN(v)) s+=v;});
+  b.textContent=Math.round(s*100)/100; }
+function cardVal(c){  // 표시/집계값: 펼침=장소 합, 접힘=단일칸
+  if(expandedSet.has(+c.dataset.id)){
+    let s=0,any=false; c.querySelectorAll(".lq").forEach(i=>{const v=parseFloat(i.value); if(!isNaN(v)){s+=v;any=true;}});
+    return any?s:""; }
+  return c.querySelector(".qty").value.trim(); }
+function cardFilled(c){ return c.querySelector('.stockout input').checked || cardVal(c)!==""; }
+function applyExpand(c,on){
+  const q=c.querySelector(".qty"), u=c.querySelector(".qtywrap .u"),
+        sp=c.querySelector(".locsplit"), b=c.querySelector(".expandBtn");
+  if(q)q.style.display=on?"none":""; if(u)u.style.display=on?"none":"";
+  if(sp)sp.style.display=on?"flex":"none"; if(b)b.textContent=on?"−":"＋"; }
 function openInputterGate(){
   if(!staffList.length) return;
   $("#staffList").innerHTML=staffList.map(s=>
@@ -326,9 +307,9 @@ async function init(){
     items=its;                                  // item_id 순 = 엑셀 순
     items.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
     await bindStore();                          // #store를 공용계정 매장으로 바인딩(렌더 전)
+    await loadStaff(); await loadStoreLocations(); loadExpanded();  // 장소칸 빌드에 필요 → 렌더 전
     buildChips(); renderItems();
-    await loadStaff(); await loadStoreLocations();
-    loadInputter(true); loadLocation();         // 입력자 게이트 + 장소 로드
+    loadInputter(true);                         // 입력자 게이트
   }catch(e){ $("#items").innerHTML="서버에 연결하지 못했어요.<br>무료 서버는 첫 접속 시 최대 1분 걸려요. 잠시 뒤 새로고침 해주세요."; }
 }
 
@@ -402,6 +383,10 @@ function renderItems(){
     const d=draft[i.item_id]||{};
     const st=i.storage||i.zone||"기타";
     const pt=i.part||"기타";
+    const exp=expandedSet.has(i.item_id);
+    const split=storeLocs.length?`<div class="locsplit" style="display:${exp?'flex':'none'};flex-wrap:wrap;gap:6px 8px;align-items:center;width:100%;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">
+        ${storeLocs.map(loc=>`<span style="font-size:12px;color:var(--muted)">${loc}</span><input class="lq num" data-loc="${loc}" inputmode="decimal" placeholder="—" value="${(d.locs&&d.locs[loc])??""}" style="width:60px;text-align:right;border:1px solid var(--line);border-radius:9px;padding:8px">`).join("")}
+        <span style="margin-left:auto;font-size:13px">합 <b class="lsum">0</b> ${i.stock_unit}</span></div>`:"";
     return `<div class="card" data-id="${i.item_id}" data-name="${i.name}" data-p="${pt}" data-sup="${(i.supplier||'미지정').toUpperCase()}">
       <div>
         <div class="name">${i.name}</div>
@@ -409,24 +394,39 @@ function renderItems(){
         ${i.is_bulk?`<div class="bulkwrap" data-id="${i.item_id}" style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"></div>`:""}
       </div>
       <div class="qtywrap">
-        <input class="qty num" inputmode="decimal" placeholder="—" value="${d.qty??""}" aria-label="${i.name}">
-        <span class="u">${i.stock_unit}</span>
+        <input class="qty num" inputmode="decimal" placeholder="—" value="${d.qty??""}" aria-label="${i.name}" style="${exp?'display:none':''}">
+        <span class="u" style="${exp?'display:none':''}">${i.stock_unit}</span>
+        ${storeLocs.length?`<button class="expandBtn" title="장소 나누기" style="border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 10px;font-size:14px;cursor:pointer">${exp?'−':'＋'}</button>`:""}
       </div>
       <div class="stockout"><input type="checkbox" id="so${i.item_id}" ${d.so?"checked":""}>
         <label for="so${i.item_id}">발주 검토</label></div>
+      ${split}
     </div>`;
   }).join("");
 
   $("#items").querySelectorAll(".card").forEach(c=>{
+    const id=+c.dataset.id;
     c.querySelector(".name").style.cursor="pointer";
-    c.querySelector(".name").onclick=()=>openHist(+c.dataset.id,c.dataset.name);
-    const qty=c.querySelector(".qty"), so=c.querySelector('input[type=checkbox]');
+    c.querySelector(".name").onclick=()=>openHist(id,c.dataset.name);
+    const qty=c.querySelector(".qty"), so=c.querySelector('.stockout input');
     const upd=()=>{if(qty.value.startsWith("."))qty.value="0"+qty.value;
-      c.classList.toggle("filled",qty.value.trim()!==""||so.checked);autosave();updProg();};
+      c.classList.toggle("filled",cardFilled(c));autosave();updProg();};
     qty.addEventListener("input",upd);
     so.addEventListener("change",()=>{c.classList.toggle("out",so.checked);upd();});
+    c.querySelectorAll(".lq").forEach(inp=>inp.addEventListener("input",()=>{
+      if(inp.value.startsWith("."))inp.value="0"+inp.value;
+      updSum(c);c.classList.toggle("filled",cardFilled(c));autosave();updProg();}));
+    const eb=c.querySelector(".expandBtn");
+    if(eb)eb.onclick=()=>{
+      const on=!expandedSet.has(id);
+      if(on)expandedSet.add(id); else expandedSet.delete(id);
+      saveExpanded(); applyExpand(c,on);
+      updSum(c); c.classList.toggle("filled",cardFilled(c)); autosave(); updProg();
+      loadShared();   // 서버의 내 (장소)입력으로 프리필
+    };
+    updSum(c);
     if(so.checked)c.classList.add("out");
-    if(qty.value.trim()!=="")c.classList.add("filled");
+    if(cardFilled(c))c.classList.add("filled");
   });
   applyFilter(); updProg(); loadPrev().then(loadShared); loadReplacements();
 }
@@ -440,13 +440,14 @@ async function loadShared(){
     const rows=await r.json();
     const nameOf={}; staffList.forEach(s=>nameOf[s.staff_id]=s.name);
     const bulkOf={}; items.forEach(i=>bulkOf[i.item_id]=!!i.is_bulk);
-    const NUL=" ";
+    const NUL="__nul__";
     const byItem={};
     rows.forEach(x=>{const it=byItem[x.item_id]=byItem[x.item_id]||{}; const k=x.location||NUL; (it[k]=it[k]||[]).push(x);});
     Object.keys(byItem).forEach(id=>{
       const c=document.querySelector(`.card[data-id="${id}"]`); if(!c)return;
       const locs=byItem[id];
-      let total=0, anyConflict=false, myVal=null, mySo=false; const parts=[];
+      let total=0, anyConflict=false, mySo=false; const parts=[]; const myByLoc={};
+      const myId=currentStaff?currentStaff.staff_id:null;
       Object.keys(locs).forEach(k=>{
         const grp=locs[k], loc=(k===NUL)?null:k;
         const qs=grp.map(x=>x.qty).filter(q=>q!=null).map(Number);
@@ -461,14 +462,18 @@ async function loadShared(){
         if(lc) anyConflict=true;
         const who=[...new Set(grp.map(x=>nameOf[x.staff_id]).filter(Boolean))].join(",");
         parts.push(`${loc||"미지정"} ${val==null?"-":val}${who?`(${who})`:""}${lc?" ⚠":""}`);
-        const mine=grp.find(x=>(x.staff_id||null)===(currentStaff?currentStaff.staff_id:null)
-                               && (x.location||null)===(currentLocation||null));
-        if(mine){ if(mine.qty!=null) myVal=Number(mine.qty); if(mine.so) mySo=true; }
+        const mine=grp.find(x=>(x.staff_id||null)===myId);
+        if(mine){ if(mine.qty!=null) myByLoc[k]=Number(mine.qty); if(mine.so) mySo=true; }
       });
-      const qtyEl=c.querySelector(".qty"), soEl=c.querySelector('input[type=checkbox]');
-      if(myVal!=null) qtyEl.value=myVal;                    // 내 (장소)입력만 프리필(합계로 안 덮음)
+      const soEl=c.querySelector('.stockout input');
+      if(expandedSet.has(+id)){                              // 펼침: 장소칸별 내 입력 프리필
+        c.querySelectorAll(".lq").forEach(inp=>{const mv=myByLoc[inp.dataset.loc]; if(mv!=null) inp.value=mv;});
+        updSum(c);
+      }else{                                                 // 접힘: 단일칸에 내 미지정 입력 프리필
+        const mv=myByLoc[NUL]; if(mv!=null) c.querySelector(".qty").value=mv;
+      }
       if(mySo){soEl.checked=true;c.classList.add("out");}
-      c.classList.toggle("filled",qtyEl.value.trim()!==""||soEl.checked);
+      c.classList.toggle("filled",cardFilled(c));
       let lb=c.querySelector(".locbreak");
       if(!lb){lb=document.createElement("div");lb.className="locbreak";
         lb.style.cssText="font-size:12px;margin-top:3px";
@@ -567,26 +572,46 @@ function updProg(){
   $("#prog").textContent=`입력 ${done} / ${cards.length}  ·  안 센 품목은 어제 재고로 자동 처리돼요`;
 }
 
-function collect(){
-  return [...document.querySelectorAll(".card")].map(c=>{
-    const v=c.querySelector(".qty").value.trim();
-    const so=c.querySelector('input[type=checkbox]').checked;
-    return {item_id:+c.dataset.id, qty:v, so};
+// 저장할 줄 구성: 펼침=장소별 여러 줄(location=장소), 접힘=단일 줄(location=null)
+function collectLines(){
+  const out=[];
+  document.querySelectorAll("#items .card").forEach(c=>{
+    const id=+c.dataset.id, so=c.querySelector('.stockout input').checked;
+    if(expandedSet.has(id)){
+      let any=false;
+      c.querySelectorAll(".lq").forEach(inp=>{const v=inp.value.trim(); if(v==="")return;
+        out.push({item_id:id, qty:parseFloat(v)||0, so, location:inp.dataset.loc}); any=true;});
+      if(!any && so) out.push({item_id:id, qty:0, so, location:null});
+    }else{
+      const v=c.querySelector(".qty").value.trim();
+      if(v!=="" || so) out.push({item_id:id, qty:v===""?0:parseFloat(v), so, location:null});
+    }
   });
+  return out;
 }
 function autosave(){
   const d={};
-  collect().forEach(x=>{if(x.qty!==""||x.so)d[x.item_id]={qty:x.qty,so:x.so};});
+  document.querySelectorAll("#items .card").forEach(c=>{
+    const id=c.dataset.id, so=c.querySelector('.stockout input').checked;
+    if(expandedSet.has(+id)){
+      const locs={}; let any=false;
+      c.querySelectorAll(".lq").forEach(inp=>{const v=inp.value.trim(); if(v!==""){locs[inp.dataset.loc]=v; any=true;}});
+      if(any||so) d[id]={locs,so};
+    }else{
+      const v=c.querySelector(".qty").value.trim();
+      if(v!==""||so) d[id]={qty:v,so};
+    }
+  });
   localStorage.setItem(draftKey(),JSON.stringify(d));
 }
 
 $("#tempBtn").onclick=async()=>{
   autosave();
-  const lines=collect().filter(x=>x.qty!==""||x.so).map(x=>{
+  const lines=collectLines().map(x=>{
     const o={store_id:+$("#store").value, date:$("#date").value, item_id:x.item_id,
-      qty:x.qty===""?0:parseFloat(x.qty), so:x.so};
-    if(currentStaff) o.staff_id=currentStaff.staff_id;  // 선택됐을 때만(5키 유니크)
-    if(currentLocation) o.location=currentLocation;     // 미지정이면 null(단일장소)
+      qty:x.qty, so:x.so};
+    if(currentStaff) o.staff_id=currentStaff.staff_id;  // 5키 유니크
+    if(x.location) o.location=x.location;               // 없으면 null(단일장소)
     return o;});
   if(!lines.length){toast("입력된 항목이 없어요",1);return;}
   const btn=$("#tempBtn");btn.disabled=true;
@@ -608,8 +633,8 @@ function sortUnfilled(){
     .forEach(c=>wrap.appendChild(c));
   window.scrollTo(0,0);
 }
-$("#store").onchange=()=>{renderItems();loadStaff().then(()=>loadInputter(false));loadStoreLocations().then(loadLocation);};
-$("#date").onchange=()=>{renderItems();loadInputter(false);loadLocation();};
+$("#store").onchange=async()=>{await loadStoreLocations();loadExpanded();renderItems();loadStaff().then(()=>loadInputter(false));};
+$("#date").onchange=()=>{renderItems();loadInputter(false);};
 
 // (조각e/D2-가) 직원은 재고 저장만. 발주 계산·확정·daily_stock write는 관리자 몫 → 안내만.
 $("#calcBtn").onclick=()=>{
@@ -831,8 +856,8 @@ function dlCSV(name,rows){
 $("#expStock").onclick=async()=>{
   const g={};
   document.querySelectorAll(".card").forEach(c=>{
-    const v=c.querySelector(".qty").value.trim();
-    const so=c.querySelector('input[type=checkbox]').checked;
+    const v=(""+cardVal(c)).trim();               // 펼침이면 장소 합, 접힘이면 단일칸
+    const so=c.querySelector('.stockout input').checked;
     if(v===""&&!so)return;
     const it=items.find(i=>i.item_id==c.dataset.id)||{};
     const line=`- ${it.name||c.dataset.name} ${so?"0(발주검토)":v+(it.stock_unit||"")}`;
