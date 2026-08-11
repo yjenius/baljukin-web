@@ -156,12 +156,17 @@ function renderConfirm(rows){
   if(!rows.length){$("#confirmList").innerHTML="<div class='msg'>오늘 직원이 입력한 재고가 없어요</div>";return;}
   $("#confirmList").innerHTML=`<div class="total"><span>재고 확정 · ${$("#date").value}</span><span>${rows.length}품목</span></div>`+
     rows.map(r=>{
-      const ins=r.inputs.map(i=>`${i.staff||"?"} ${i.qty==null?"-":i.qty}`).join(" · ");
+      // 장소별 내역: "보관 3(홍,김) · 해동 1(김)" + 다장소면 합계
+      const locs=(r.locations||[]).map(l=>{
+        const who=[...new Set((l.inputs||[]).map(i=>i.staff).filter(Boolean))].join(",");
+        return `${l.location||"미지정"} ${l.value==null?"-":l.value}${who?`(${who})`:""}${l.conflict?" ⚠":""}`;
+      }).join(" · ");
+      const multi=(r.locations||[]).length>1;
       return `<div class="card" data-id="${r.item_id}">
         <div><div class="name">${r.name||r.item_id}${r.conflict?` <span class="badge warn">⚠ 불일치</span>`:""}</div>
-          <div class="meta"><span>${ins}</span>${r.confirmed!=null?`<span class="badge">확정 ${r.confirmed}</span>`:""}</div></div>
+          <div class="meta"><span>${locs}${multi?` = <b>합 ${r.total}</b>`:""}</span>${r.confirmed!=null?`<span class="badge">확정 ${r.confirmed}</span>`:""}</div></div>
         <div class="qtywrap">
-          <input class="oqty num confq" inputmode="decimal" value="${r.proposal==null?"":r.proposal}">
+          <input class="oqty num confq" inputmode="decimal" value="${r.total==null?"":r.total}">
           <span class="u">${r.stock_unit||""}</span></div>
       </div>`;}).join("");
   document.querySelectorAll("#confirmList .oqty").forEach(el=>el.addEventListener("focus",()=>el.select()));

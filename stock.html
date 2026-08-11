@@ -120,6 +120,8 @@ sbA.auth.onAuthStateChange((_e,s)=>{window.sbToken=s?.access_token||null;});
   <div id="inputterBar" style="font-size:13px;margin-top:6px;display:none">
     <span id="inputterLabel"></span>
     <span class="link" id="changeInputter" style="margin-left:6px"></span>
+    <span id="locLabel" style="margin-left:12px"></span>
+    <span class="link" id="changeLoc" style="margin-left:6px"></span>
   </div>
   <input class="search" id="search" placeholder="🔍 품목 검색" autocomplete="off">
   <div style="display:flex;gap:6px;margin-top:8px">
@@ -203,6 +205,15 @@ sbA.auth.onAuthStateChange((_e,s)=>{window.sbToken=s?.access_token||null;});
   </div>
 </div>
 
+<div class="modalbg hidden" id="locbg">
+  <div class="modal">
+    <h3>입력 장소 선택</h3>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">지금 세는 장소를 고르세요. 여러 장소로 나뉜 품목은 장소별로 입력하면 합산됩니다.</div>
+    <div id="locList" style="display:flex;flex-wrap:wrap"></div>
+    <div class="acts"><button class="btn ghost sm" id="locCancel">닫기</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -218,6 +229,7 @@ function draftKey(){return `draft:${$("#store").value}:${$("#date").value}`;}
 /* ── 입력자(직원) 선택 — Phase3 조각2. store_staff 활성 직원 이름 탭 선택 ──
    staff_id는 직원이 실제 선택됐을 때만 저장에 실린다(미적용/미등록이면 기존 동작 유지). */
 let myProfile=null, staffList=[], currentStaff=null, isAdmin=false;
+let storeLocs=[], currentLocation=null;   // 조각4: 매장 장소 목록 / 현재 입력 장소(null=미지정)
 async function getProfile(){
   for(let i=0;i<20 && !window.sbAuth;i++) await new Promise(r=>setTimeout(r,250));
   if(!window.sbAuth) return null;
@@ -245,13 +257,44 @@ async function loadStaff(){
     if(r.ok) staffList=await r.json(); }catch(e){}   // 테이블 없음/실패 → 빈 목록 → 게이트 미표시
 }
 function inputterKey(){return `inputter:${$("#store").value}:${$("#date").value}`;}
+function locKey(){return `location:${$("#store").value}:${$("#date").value}`;}
 function updateInputterBar(){
   const bar=$("#inputterBar");
-  if(!staffList.length){bar.style.display="none";return;}
+  if(!staffList.length && !storeLocs.length){bar.style.display="none";return;}
   bar.style.display="block";
-  if(currentStaff){$("#inputterLabel").innerHTML=`입력자 <b>${currentStaff.name}</b>`;$("#changeInputter").textContent="변경";}
-  else{$("#inputterLabel").textContent="입력자 미선택";$("#changeInputter").textContent="선택하기";}
+  if(staffList.length){
+    if(currentStaff){$("#inputterLabel").innerHTML=`입력자 <b>${currentStaff.name}</b>`;$("#changeInputter").textContent="변경";}
+    else{$("#inputterLabel").textContent="입력자 미선택";$("#changeInputter").textContent="선택하기";}
+  }else{$("#inputterLabel").textContent="";$("#changeInputter").textContent="";}
+  if(storeLocs.length){
+    $("#locLabel").innerHTML=`장소 <b>${currentLocation||"미지정"}</b>`;$("#changeLoc").textContent="변경";
+  }else{$("#locLabel").textContent="";$("#changeLoc").textContent="";}
 }
+async function loadStoreLocations(){
+  storeLocs=[];
+  try{ const r=await sbFetch(`/store_locations?store_id=eq.${$("#store").value}&active=eq.true&select=name,sort&order=sort`);
+    if(r.ok) storeLocs=(await r.json()).map(x=>x.name); }catch(e){}
+}
+function loadLocation(){
+  currentLocation=null;
+  try{const v=localStorage.getItem(locKey()); if(v) currentLocation=v;}catch(e){}
+  updateInputterBar();
+}
+function openLocGate(){
+  const chips=["미지정",...storeLocs];
+  $("#locList").innerHTML=chips.map(n=>
+    `<button class="chip${(n==="미지정"?!currentLocation:n===currentLocation)?" on":""}" data-loc="${n}" style="margin:4px;cursor:pointer">${n}</button>`).join("");
+  $("#locList").querySelectorAll("button").forEach(b=>b.onclick=()=>{
+    const n=b.dataset.loc;
+    currentLocation=(n==="미지정")?null:n;
+    if(currentLocation) localStorage.setItem(locKey(),currentLocation); else localStorage.removeItem(locKey());
+    updateInputterBar(); $("#locbg").classList.add("hidden"); loadShared();  // 새 장소 기준 프리필 갱신
+  });
+  $("#locbg").classList.remove("hidden");
+}
+$("#changeLoc").onclick=openLocGate;
+$("#locCancel").onclick=()=>$("#locbg").classList.add("hidden");
+$("#locbg").onclick=e=>{if(e.target.id==="locbg")$("#locbg").classList.add("hidden");};
 function openInputterGate(){
   if(!staffList.length) return;
   $("#staffList").innerHTML=staffList.map(s=>
@@ -284,7 +327,8 @@ async function init(){
     items.sort((a,b)=>(parseFloat(a.location)||9999)-(parseFloat(b.location)||9999));
     await bindStore();                          // #store를 공용계정 매장으로 바인딩(렌더 전)
     buildChips(); renderItems();
-    await loadStaff(); loadInputter(true);      // 활성 직원 로드 → 입력자 게이트
+    await loadStaff(); await loadStoreLocations();
+    loadInputter(true); loadLocation();         // 입력자 게이트 + 장소 로드
   }catch(e){ $("#items").innerHTML="서버에 연결하지 못했어요.<br>무료 서버는 첫 접속 시 최대 1분 걸려요. 잠시 뒤 새로고침 해주세요."; }
 }
 
@@ -387,40 +431,51 @@ function renderItems(){
   applyFilter(); updProg(); loadPrev().then(loadShared); loadReplacements();
 }
 
-/* 다른 폰/직원이 저장한 재고 불러와 표시용 병합 (Phase3 조각3, location=null 기준)
-   개수형: 최신(created_at) 채택, 편차 크면 충돌 배지. 벌크형: 평균. */
+/* 조각4: 장소별 병합·표시. (item,location)별 병합(개수형 최신/벌크 평균) → 장소 간 합.
+   카드에 "이미: 보관 2(홍) · 해동 1(김) = 합 3" 표시(중복 방지). 입력칸엔 내(장소)입력만 프리필. */
 async function loadShared(){
   try{
-    const r=await sbFetch(`/stock_draft?store_id=eq.${$("#store").value}&date=eq.${$("#date").value}&location=is.null&select=item_id,qty,so,created_at`);
+    const r=await sbFetch(`/stock_draft?store_id=eq.${$("#store").value}&date=eq.${$("#date").value}&select=item_id,qty,so,created_at,staff_id,location`);
     if(!r.ok)return;
     const rows=await r.json();
-    const byItem={}; rows.forEach(row=>{(byItem[row.item_id]=byItem[row.item_id]||[]).push(row);});
+    const nameOf={}; staffList.forEach(s=>nameOf[s.staff_id]=s.name);
     const bulkOf={}; items.forEach(i=>bulkOf[i.item_id]=!!i.is_bulk);
+    const NUL=" ";
+    const byItem={};
+    rows.forEach(x=>{const it=byItem[x.item_id]=byItem[x.item_id]||{}; const k=x.location||NUL; (it[k]=it[k]||[]).push(x);});
     Object.keys(byItem).forEach(id=>{
-      const c=document.querySelector(`.card[data-id="${id}"]`);
-      if(!c)return;
-      const grp=byItem[id];
-      const qs=grp.map(x=>x.qty).filter(q=>q!=null).map(Number);
-      let merged=null, so=false, conflict=false;
-      if(bulkOf[id]){                                   // 벌크: 평균
-        if(qs.length) merged=Math.round(qs.reduce((a,b)=>a+b,0)/qs.length*100)/100;
-      }else{                                            // 개수형: 최신 채택
-        const latest=grp.slice().sort((a,b)=>(a.created_at||"").localeCompare(b.created_at||"")).pop();
-        merged=latest.qty!=null?Number(latest.qty):null; so=!!latest.so;
-        if(qs.length>=2){                               // 충돌: 절대 floor 1 + 상대 20%
-          const mx=Math.max(...qs), mn=Math.min(...qs), diff=mx-mn;
-          conflict = diff>=1 && (diff/mx)>0.2;
+      const c=document.querySelector(`.card[data-id="${id}"]`); if(!c)return;
+      const locs=byItem[id];
+      let total=0, anyConflict=false, myVal=null, mySo=false; const parts=[];
+      Object.keys(locs).forEach(k=>{
+        const grp=locs[k], loc=(k===NUL)?null:k;
+        const qs=grp.map(x=>x.qty).filter(q=>q!=null).map(Number);
+        let val=null, lc=false;
+        if(bulkOf[id]){ if(qs.length) val=Math.round(qs.reduce((a,b)=>a+b,0)/qs.length*100)/100; }
+        else{
+          const latest=grp.slice().sort((a,b)=>(a.created_at||"").localeCompare(b.created_at||"")).pop();
+          val=latest.qty!=null?Number(latest.qty):null;
+          if(qs.length>=2){const mx=Math.max(...qs),mn=Math.min(...qs),d=mx-mn; lc=d>=1&&(d/mx)>0.2;}
         }
-      }
+        if(val!=null) total+=val;
+        if(lc) anyConflict=true;
+        const who=[...new Set(grp.map(x=>nameOf[x.staff_id]).filter(Boolean))].join(",");
+        parts.push(`${loc||"미지정"} ${val==null?"-":val}${who?`(${who})`:""}${lc?" ⚠":""}`);
+        const mine=grp.find(x=>(x.staff_id||null)===(currentStaff?currentStaff.staff_id:null)
+                               && (x.location||null)===(currentLocation||null));
+        if(mine){ if(mine.qty!=null) myVal=Number(mine.qty); if(mine.so) mySo=true; }
+      });
       const qtyEl=c.querySelector(".qty"), soEl=c.querySelector('input[type=checkbox]');
-      const auto=prevMap[id];
-      if(merged!=null && +merged!==+auto) qtyEl.value=merged;
-      if(so){soEl.checked=true;c.classList.add("out");}
+      if(myVal!=null) qtyEl.value=myVal;                    // 내 (장소)입력만 프리필(합계로 안 덮음)
+      if(mySo){soEl.checked=true;c.classList.add("out");}
       c.classList.toggle("filled",qtyEl.value.trim()!==""||soEl.checked);
-      const meta=c.querySelector(".meta");
-      const old=meta&&meta.querySelector(".cflag"); if(old)old.remove();
-      if(conflict && meta) meta.insertAdjacentHTML("beforeend",
-        `<span class="cflag" style="color:var(--warn);font-size:11px;margin-left:6px">⚠ 입력 불일치</span>`);
+      let lb=c.querySelector(".locbreak");
+      if(!lb){lb=document.createElement("div");lb.className="locbreak";
+        lb.style.cssText="font-size:12px;margin-top:3px";
+        c.querySelector(".meta").insertAdjacentElement("afterend",lb);}
+      const nLoc=Object.keys(locs).length;
+      lb.innerHTML=`이미: ${parts.join(" · ")}${nLoc>1?` = <b>합 ${Math.round(total*100)/100}</b>`:""}`;
+      lb.style.color=anyConflict?"var(--warn)":"var(--muted)";
     });
     updProg();
   }catch(e){}
@@ -530,7 +585,8 @@ $("#tempBtn").onclick=async()=>{
   const lines=collect().filter(x=>x.qty!==""||x.so).map(x=>{
     const o={store_id:+$("#store").value, date:$("#date").value, item_id:x.item_id,
       qty:x.qty===""?0:parseFloat(x.qty), so:x.so};
-    if(currentStaff) o.staff_id=currentStaff.staff_id;  // 선택됐을 때만(유니크는 옛것 유지)
+    if(currentStaff) o.staff_id=currentStaff.staff_id;  // 선택됐을 때만(5키 유니크)
+    if(currentLocation) o.location=currentLocation;     // 미지정이면 null(단일장소)
     return o;});
   if(!lines.length){toast("입력된 항목이 없어요",1);return;}
   const btn=$("#tempBtn");btn.disabled=true;
@@ -552,8 +608,8 @@ function sortUnfilled(){
     .forEach(c=>wrap.appendChild(c));
   window.scrollTo(0,0);
 }
-$("#store").onchange=()=>{renderItems();loadStaff().then(()=>loadInputter(false));};
-$("#date").onchange=()=>{renderItems();loadInputter(false);};
+$("#store").onchange=()=>{renderItems();loadStaff().then(()=>loadInputter(false));loadStoreLocations().then(loadLocation);};
+$("#date").onchange=()=>{renderItems();loadInputter(false);loadLocation();};
 
 // (조각e/D2-가) 직원은 재고 저장만. 발주 계산·확정·daily_stock write는 관리자 몫 → 안내만.
 $("#calcBtn").onclick=()=>{
