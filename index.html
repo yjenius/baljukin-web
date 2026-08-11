@@ -39,7 +39,7 @@ padding:18px;text-decoration:none;color:var(--ink);font-weight:700;font-size:17p
   <div class="menu" id="menu">
     <a href="stock.html">📋 재고조사<span>마감 재고 입력 · 발주 계산</span></a>
     <a href="inbound.html">📦 입고 확인<span>발주분 체크 · 수동 입고</span></a>
-    <a href="order.html" class="admin-only">🛒 발주하기<span>담기 · 장바구니 · 주문내역</span></a>
+    <a href="order.html" class="mgr-only">🛒 발주하기<span>담기 · 장바구니 · 주문내역</span></a>
     <a href="admin.html" class="admin-only">⚙️ 품목 관리<span>품목 추가·수정·대량 등록</span></a>
     <a href="report.html" class="admin-only">📊 월간 결산<span>일별 재고·발주 현황 엑셀</span></a>
     <div class="out" id="outBtn">로그아웃</div>
@@ -50,15 +50,18 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const sb=createClient("https://uisdezsmyknmwayexhbu.supabase.co","sb_publishable_18Z8F9WYbJkbmFGIumZdKA_f6YGy9po");
 const $=s=>document.querySelector(s);
 const show=on=>{$("#login").style.display=on?"none":"block";$("#menu").style.display=on?"flex":"none";};
-// role별 메뉴 게이팅(UX). role null → staff(최소권한)로 admin 메뉴 숨김. 진짜 경계는 Phase4 RLS.
+// role별 메뉴 게이팅(UX, 3단계 staff<manager<admin). null→staff. 진짜 경계는 Phase4 RLS.
+// .admin-only=admin만 / .mgr-only=manager+admin
 async function applyRole(){
-  let admin=false;
+  let role=null;
   try{
     const {data:{session:s}}=await sb.auth.getSession();
     if(s){ const {data:p}=await sb.from("profiles").select("role").eq("id",s.user.id).single();
-      admin = !!(p && p.role==="admin"); }
-  }catch(e){ admin=false; }
+      role = p && p.role; }
+  }catch(e){}
+  const admin=role==="admin", mgr=admin||role==="manager";
   document.querySelectorAll(".admin-only").forEach(el=>el.style.display=admin?"":"none");
+  document.querySelectorAll(".mgr-only").forEach(el=>el.style.display=mgr?"":"none");
 }
 const {data:{session}}=await sb.auth.getSession(); show(!!session);
 if(session) applyRole();

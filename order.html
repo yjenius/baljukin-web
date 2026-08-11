@@ -72,7 +72,7 @@ else{
   try{ const {data:p}=await sbA.from("profiles").select("role,store_id").eq("id",session.user.id).single();
     window.myRole=p?.role||null; window.myStore=(p&&p.store_id!=null)?p.store_id:null; }
   catch(e){ window.myRole=null; }
-  if(window.myRole!=="admin") location.href="index.html";   // staff 직접진입 차단(UX 게이팅)
+  if(!(window.myRole==="admin"||window.myRole==="manager")) location.href="index.html";  // 발주=매니저+관리자(UX 게이팅)
 }
 </script>
 
@@ -201,9 +201,9 @@ async function init(){
     buildChips(); renderPick();
     fetchRecs().then(renderPick);
   }catch(e){$("#items").innerHTML="<div class='msg'>서버 연결 실패 — 잠시 뒤 새로고침</div>";}
-  // 관리자만 '재고확정' 진입 노출 (role은 상단 모듈이 세팅)
+  // 재고확정 진입: 매니저+관리자 노출 (role은 상단 모듈이 세팅)
   for(let i=0;i<20 && window.myRole===undefined;i++) await new Promise(r=>setTimeout(r,150));
-  if(window.myRole==="admin"){
+  if(window.myRole==="admin"||window.myRole==="manager"){
     $("#confirmEntry").style.display="";
     $("#confirmEntry").onclick=(e)=>{e.preventDefault();loadProposal();};
   }
