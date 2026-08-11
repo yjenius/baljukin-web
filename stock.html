@@ -272,7 +272,7 @@ function updateInputterBar(){
 }
 async function loadStoreLocations(){
   storeLocs=[];
-  try{ const r=await sbFetch(`/store_locations?store_id=eq.${$("#store").value}&active=eq.true&select=name,sort&order=sort`);
+  try{ const r=await sbFetch(`/store_locations?store_id=eq.${$("#store").value}&active=eq.true&select=name&order=id`);
     if(r.ok) storeLocs=(await r.json()).map(x=>x.name); }catch(e){}
 }
 function loadLocation(){
