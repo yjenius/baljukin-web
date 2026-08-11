@@ -109,16 +109,9 @@
   .meta{margin-top:1px}
   .qty{padding:10px;font-size:19px}          /* 여전히 큰 탭 타깃(≈44px) */
   .stockout{margin-top:2px}
-  .bar{padding:8px 12px calc(8px + env(safe-area-inset-bottom));transition:transform .2s ease}
+  .bar{padding:8px 12px calc(8px + env(safe-area-inset-bottom))}
   .btn{padding:12px;font-size:15px;min-height:46px}
   .btn.ghost{padding:12px 14px}
-  /* 스크롤 다운 시 헤더 접기 + 하단바 숨김. 스크롤 업/최상단이면 복귀 */
-  body.sdown header .brand,
-  body.sdown header #inputterBar,
-  body.sdown header .filterrow,
-  body.sdown header #chips,
-  body.sdown header .prog{display:none}
-  body.sdown .bar{transform:translateY(140%)}
 </style>
 </head>
 <body>
@@ -940,15 +933,6 @@ async function openHist(id,name){
 }
 $("#histClose").onclick=()=>$("#histbg").classList.add("hidden");
 $("#histbg").onclick=e=>{if(e.target.id==="histbg")$("#histbg").classList.add("hidden");};
-
-// 모바일: 스크롤 내리면 헤더 접힘·하단바 숨김, 올리면(또는 최상단) 복귀
-let _ly=0;
-addEventListener("scroll",()=>{
-  const y=window.scrollY||document.documentElement.scrollTop||0;
-  if(y>70 && y>_ly+4) document.body.classList.add("sdown");
-  else if(y<_ly-4 || y<40) document.body.classList.remove("sdown");
-  _ly=y;
-},{passive:true});
 
 init();
 </script>
