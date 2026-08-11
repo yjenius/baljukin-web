@@ -94,6 +94,31 @@
   .supbtn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 8px;font-size:12px;cursor:pointer;color:var(--muted)}
   .suplist button{display:block;width:100%;margin:6px 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fbfaf5;font-size:15px;font-family:inherit;cursor:pointer;text-align:left}
   .step{width:40px;height:44px;border:1px solid var(--line);background:#fff;border-radius:10px;font-size:20px;font-weight:700;cursor:pointer;color:var(--ink)}
+
+  /* ── 모바일 밀도 개선(입력 영역 넓히기) ── */
+  header{padding:8px 12px}
+  .brand{font-size:15px}
+  .brand b{font-size:17px}
+  .ctrls{margin-top:6px;align-items:center}
+  select,.dateinput,.search{padding:9px 10px;font-size:14px}
+  .chips{margin-top:5px}
+  .prog{margin-top:5px}
+  main{padding:10px 12px}
+  .card{padding:9px 10px;margin-bottom:5px;gap:5px 10px}
+  .name{font-size:15px}
+  .meta{margin-top:1px}
+  .qty{padding:10px;font-size:19px}          /* 여전히 큰 탭 타깃(≈44px) */
+  .stockout{margin-top:2px}
+  .bar{padding:8px 12px calc(8px + env(safe-area-inset-bottom));transition:transform .2s ease}
+  .btn{padding:12px;font-size:15px;min-height:46px}
+  .btn.ghost{padding:12px 14px}
+  /* 스크롤 다운 시 헤더 접기 + 하단바 숨김. 스크롤 업/최상단이면 복귀 */
+  body.sdown header .brand,
+  body.sdown header #inputterBar,
+  body.sdown header .filterrow,
+  body.sdown header #chips,
+  body.sdown header .prog{display:none}
+  body.sdown .bar{transform:translateY(140%)}
 </style>
 </head>
 <body>
@@ -115,14 +140,14 @@ sbA.auth.onAuthStateChange((_e,s)=>{window.sbToken=s?.access_token||null;});
     <a href="index.html" style="color:#9fb3a6;font-size:13px;text-decoration:none;margin-left:auto;margin-right:10px">🏠 메인</a><span class="link" id="loadOrder" style="margin-left:0">오늘 발주 불러오기</span></div>
   <div class="ctrls">
     <select id="store" style="display:none"></select>
-    <input class="dateinput" type="date" id="date" style="flex:1">
+    <input class="dateinput" type="date" id="date" style="flex:0 0 128px">
+    <input class="search" id="search" placeholder="🔍 검색" autocomplete="off" style="flex:1;margin:0">
   </div>
   <div id="inputterBar" style="font-size:13px;margin-top:6px;display:none">
     <span id="inputterLabel"></span>
     <span class="link" id="changeInputter" style="margin-left:6px"></span>
   </div>
-  <input class="search" id="search" placeholder="🔍 품목 검색" autocomplete="off">
-  <div style="display:flex;gap:6px;margin-top:8px">
+  <div class="filterrow" style="display:flex;gap:6px;margin-top:6px">
     <button class="chip on" id="byPart" style="cursor:pointer">파트별</button>
     <button class="chip" id="bySup" style="cursor:pointer">발주처별</button>
   </div>
@@ -915,6 +940,15 @@ async function openHist(id,name){
 }
 $("#histClose").onclick=()=>$("#histbg").classList.add("hidden");
 $("#histbg").onclick=e=>{if(e.target.id==="histbg")$("#histbg").classList.add("hidden");};
+
+// 모바일: 스크롤 내리면 헤더 접힘·하단바 숨김, 올리면(또는 최상단) 복귀
+let _ly=0;
+addEventListener("scroll",()=>{
+  const y=window.scrollY||document.documentElement.scrollTop||0;
+  if(y>70 && y>_ly+4) document.body.classList.add("sdown");
+  else if(y<_ly-4 || y<40) document.body.classList.remove("sdown");
+  _ly=y;
+},{passive:true});
 
 init();
 </script>
